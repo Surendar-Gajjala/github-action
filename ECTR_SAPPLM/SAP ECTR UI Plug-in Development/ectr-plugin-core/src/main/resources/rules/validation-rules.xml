@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Mandatory-metadata rules, checked before an engineering object is saved.
+
+  VERIFIED: this is OUR OWN file format (read by RuleSetLoader). It is not an SAP ECTR file.
+  Property names are the logical keys from com.example.ectr.plugin.api.model.PropertyKey;
+  the ECTR adapter maps real SAP/CAD attributes onto them.
+
+  This copy is packaged in the bundle as the default. To override it without rebuilding,
+  set "validationRulesFile" in the configuration PID com.example.ectr.plugin.rules
+  (see docs/08-xml-configuration.md).
+
+  Allowed rules:
+    <mandatory property="KEY"/>                         value must be present and not blank
+    <pattern property="KEY" regex="..." example="..."/> if present, whole value must match
+    <description-languages required="en,de"/>           description needed in each language
+-->
+<validation-rules>
+
+  <object-type name="PART">
+    <mandatory property="MATERIAL_GROUP"/>
+    <mandatory property="MATERIAL"/>
+    <mandatory property="WEIGHT_KG"/>
+    <pattern   property="WEIGHT_KG" regex="\d{1,6}(\.\d{1,3})?" example="12.5"/>
+    <mandatory property="REVISION"/>
+    <pattern   property="REVISION" regex="[A-Z]{1,2}" example="A, B ... ZZ"/>
+    <description-languages required="en,de"/>
+  </object-type>
+
+  <object-type name="ASSEMBLY">
+    <mandatory property="REVISION"/>
+    <pattern   property="REVISION" regex="[A-Z]{1,2}" example="A, B ... ZZ"/>
+    <description-languages required="en,de"/>
+  </object-type>
+
+  <object-type name="DRAWING">
+    <mandatory property="REFERENCED_OBJECT"/>
+    <mandatory property="REVISION"/>
+    <description-languages required="en"/>
+  </object-type>
+
+  <!-- FOLDER has no rules: folders are never validated. -->
+
+</validation-rules>

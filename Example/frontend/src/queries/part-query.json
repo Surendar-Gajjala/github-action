@@ -1,0 +1,12 @@
+{
+  "from": { "entity": "part", "alias": "part" },
+  "select": [
+    { "selectType": "property", "alias": "part_number", "property": "part.part_number" },
+    { "selectType": "property", "alias": "manufacturer", "property": "part.manufacturer" },
+    { "selectType": "property", "alias": "description", "property": "part.description" },
+    { "selectType": "property", "property": "part.lifecycle.status", "alias": "part__lifecycle__status" },
+    { "selectType": "property", "property": "part.id", "alias": "part__id" }
+  ],
+  "output": { "format": "table" },
+  "context": { "tableId": "objecttype-view-part" }
+}

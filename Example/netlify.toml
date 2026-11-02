@@ -1,0 +1,17 @@
+# Netlify build settings. The app lives in frontend/; paths below are relative to it.
+[build]
+  base = "frontend"
+  command = "npm run build"
+  publish = "dist"
+  # /enterprise/* and /rapidratings/* are handled by netlify/edge-functions/enterprise.ts and
+  # rapidratings.ts (credentials added server-side).
+  edge_functions = "netlify/edge-functions"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# Client-side routes (/items/123, /parts/45, ...) all serve the React app.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

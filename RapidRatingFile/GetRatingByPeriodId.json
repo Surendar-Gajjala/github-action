@@ -1,0 +1,32 @@
+{
+	"id": "2019YE",
+	"href": "https://rridata.sandbox.rrilabs.co/v2.0/companies/XAZPzdJ/ratings/2019YE/",
+	"eqyYear": 2019,
+	"period": "YE",
+	"financialDate": "2019-09-28",
+	"reportingPeriod": "2020-05-15",
+	"fhr": 47,
+	"chs": 50,
+	"probabilityDefault": 0.4149,
+	"termPd": {
+		"year2": 3.66,
+		"year3": 6.27,
+		"year4": 9.06,
+		"year5": 11.96,
+		"year6": 15.01,
+		"year7": 18.32,
+		"year8": 21.97,
+		"year9": 26.05,
+		"year10": 30.59
+	},
+	"delta": -9,
+	"simulatedFhr": 47,
+	"simulatedFhrDelta": -9,
+	"operatingProfitability": 33,
+	"netProfitability": 69,
+	"capitalStructureEfficiency": 10,
+	"costStructureEfficiency": 63,
+	"leverage": "Average",
+	"liquidity": "Weak",
+	"earningsPerformance": "Average"
+}

@@ -1,0 +1,9 @@
+{
+  "from": { "entity": "company", "alias": "company" },
+  "select": [
+    { "selectType": "property", "alias": "company_name", "property": "company.company_name" },
+    { "selectType": "property", "property": "company.id", "alias": "company__id" }
+  ],
+  "output": { "format": "table" },
+  "context": { "tableId": "objecttype-view-company" }
+}

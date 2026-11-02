@@ -1,0 +1,44 @@
+{
+  "traversal": {
+    "from": { "alias": "root", "type": "item" },
+    "to": { "alias": "leaf", "type": "part" },
+    "relationshipTypes": ["item_bom", "item_sources"],
+    "direction": "DESCENDANTS",
+    "anchorProperty": "item_number",
+    "anchorValues": [],
+    "edgeProperties": ["qty_per_bom.qty"],
+    "maxDepth": 6
+  },
+  "select": {
+    "item": [
+      "item_number",
+      "description",
+      "revision",
+      "item_type",
+      "item_status",
+      "make_buy",
+      "design_group",
+      "restricted",
+      "exemption_status",
+      "project",
+      "source_notes",
+      "environmental_compliance.collection",
+      "environmental_compliance.collection_lock",
+      "environmental_compliance.eu_rohs",
+      "environmental_compliance.eu_rohs_lock",
+      "environmental_compliance.ec_exemptions",
+      "environmental_compliance.pwb_lead_halogen",
+      "environmental_compliance.pwb_lead_halogen_lock",
+      "environmental_compliance.plastic_lead_halogen",
+      "environmental_compliance.plastic_lead_halogen_lock",
+      "environmental_compliance.pnr",
+      "environmental_compliance.pnr_lock",
+      "business_unit",
+      "is_product",
+      "structure_role"
+    ],
+    "part": ["part_number", "manufacturer"]
+  },
+  "includeIntermediates": true,
+  "returnAliases": ["leaf"]
+}

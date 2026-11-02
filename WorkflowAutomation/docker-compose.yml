@@ -1,0 +1,45 @@
+# Local stack: PostgreSQL + Spring Boot backend + React frontend (served by nginx on http://localhost:8081).
+# Usage: cp .env.example .env  (edit values)  &&  docker compose up --build
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: onboarding
+      POSTGRES_USER: ${DATABASE_USERNAME:-onboarding}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-onboarding-dev}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USERNAME:-onboarding} -d onboarding"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: ./backend
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      SPRING_PROFILES_ACTIVE: postgres
+      DATABASE_URL: jdbc:postgresql://postgres:5432/onboarding
+      DATABASE_USERNAME: ${DATABASE_USERNAME:-onboarding}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-onboarding-dev}
+      APP_ALLOWED_ORIGINS: http://localhost:8081
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "8081:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres-data:

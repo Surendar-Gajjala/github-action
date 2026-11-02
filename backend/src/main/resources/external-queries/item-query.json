@@ -1,0 +1,11 @@
+{
+  "from": { "entity": "item", "alias": "item" },
+  "select": [
+    { "selectType": "property", "alias": "item_number", "property": "item.item_number" },
+    { "selectType": "property", "alias": "description", "property": "item.description" },
+    { "selectType": "property", "property": "item.business_unit", "alias": "item__business_unit" },
+    { "selectType": "property", "property": "item.id", "alias": "item__id" }
+  ],
+  "output": { "format": "table" },
+  "context": { "tableId": "objecttype-view-item" }
+}

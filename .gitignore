@@ -1,0 +1,40 @@
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+
+# Java / Maven
+target/
+*.class
+*.jar
+*.war
+hs_err_pid*
+
+# Node / Vite
+node_modules/
+dist/
+*.tsbuildinfo
+.vite/
+npm-debug.log*
+
+# Local databases
+*.db
+
+# Logs
+*.log
+logs/
+
+# IDE / OS
+.idea/
+.vscode/
+.vs/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Claude Code local settings
+.claude/settings.local.json

@@ -1,0 +1,23 @@
+{
+  "from": { "entity": "site", "alias": "site" },
+  "select": [
+    { "selectType": "property", "alias": "site_id", "property": "site.site_id" },
+    { "selectType": "property", "alias": "internal_site_id", "property": "site.internal_site_id" },
+    { "selectType": "property", "alias": "site_name", "property": "site.site_name" },
+    { "selectType": "property", "alias": "site_type", "property": "site.site_type" },
+    { "selectType": "property", "alias": "address_full_address", "property": "site.address.full_address" },
+    { "selectType": "property", "alias": "address_address_line_1", "property": "site.address.address_line_1" },
+    { "selectType": "property", "alias": "address_address_line_2", "property": "site.address.address_line_2" },
+    { "selectType": "property", "alias": "address_address_line_3", "property": "site.address.address_line_3" },
+    { "selectType": "property", "alias": "address_city_locality", "property": "site.address.city_locality" },
+    { "selectType": "property", "alias": "address_district_county", "property": "site.address.district_county" },
+    { "selectType": "property", "alias": "address_state_province", "property": "site.address.state_province" },
+    { "selectType": "property", "alias": "address_postal_code", "property": "site.address.postal_code" },
+    { "selectType": "property", "alias": "address_country", "property": "site.address.country" },
+    { "selectType": "property", "alias": "address_latitude", "property": "site.address.latitude" },
+    { "selectType": "property", "alias": "address_longitude", "property": "site.address.longitude" },
+    { "selectType": "property", "property": "site.id", "alias": "site__id" }
+  ],
+  "output": { "format": "table" },
+  "context": { "tableId": "objecttype-view-site" }
+}

@@ -1,0 +1,16 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Node / Vite
+node_modules/
+dist/
+*.tsbuildinfo
+*.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/

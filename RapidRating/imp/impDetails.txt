@@ -1,0 +1,471 @@
+# Prompt: RapidRatings Data Integration Dashboard — React Only
+
+## Objective
+
+Implement a complete RapidRatings Data Integration dashboard using React. The application should connect to the RapidRatings sandbox APIs, display data in tables, support schema inspection and schema mapping, and provide a left sidebar with five navigation items:
+
+1. Companies
+2. Portfolios
+3. Periods
+4. Ratings
+5. Outreaches
+
+This is a React-only implementation. Do not create a Spring Boot backend, Node.js backend, database, Docker configuration, or other server-side application.
+
+## 1. Technology Stack
+
+- React with TypeScript
+- Vite
+- React Router
+- Axios for HTTP requests
+- TanStack React Query for API data fetching and caching
+- React Hook Form and Zod for configuration validation
+- Tailwind CSS for styling
+- Lucide React for icons
+- Reusable components and service modules
+
+Use the project's existing dependencies and conventions where possible. Install only missing dependencies.
+
+## 2. Environment Configuration
+
+Create a `.env.example` file containing:
+
+```dotenv
+VITE_RAPIDRATINGS_DATA_API_URL=https://rridata.sandbox.rrilabs.co/v2.0
+VITE_RAPIDRATINGS_OUTREACH_API_URL=https://api.sandbox.rrilabs.co
+VITE_RAPIDRATINGS_AUTH_URL=https://rridata.sandbox.rrilabs.co/v2.0/oauth/token/
+VITE_RAPIDRATINGS_AUTH_MODE=mock
+```
+
+Provide a configurable authentication service.
+
+- Implement mock authentication for local UI development.
+- If a browser-safe sandbox authentication mechanism is explicitly supported by RapidRatings, allow it to be configured.
+- Never expose client secrets, confidential API keys, access tokens, or refresh tokens through frontend environment variables.
+- Do not invent authentication request fields or token response fields. Follow the supplied API specification.
+- If browser authentication is unsupported due to CORS or security restrictions, show a clear configuration message rather than pretending the API connection succeeded.
+- Add `.env` to `.gitignore`.
+- Never log credentials or tokens.
+
+The application must not claim that it is connected unless a real API request succeeds.
+
+## 3. RapidRatings API Endpoints
+
+Use the following API endpoints.
+
+### Authentication
+
+`POST https://rridata.sandbox.rrilabs.co/v2.0/oauth/token/`
+
+Implement the authentication service according to the official API documentation. Support token expiry and renewal only if the documented authentication flow provides them.
+
+### Companies
+
+`GET https://rridata.sandbox.rrilabs.co/v2.0/companies/`
+
+Display company records and provide search, pagination, refresh, and record details.
+
+### Portfolios
+
+`GET https://rridata.sandbox.rrilabs.co/v2.0/portfolios/`
+
+Display portfolio records and provide search, pagination, refresh, and record details.
+
+### Periods
+
+`GET https://rridata.sandbox.rrilabs.co/v2.0/companies/{rrid}/periods/`
+
+Allow the user to select a company and retrieve its reporting periods. Make the selected company identifier available in the page controls.
+
+### Ratings
+
+`GET https://rridata.sandbox.rrilabs.co/v2.0/companies/{rrid}/ratings/`
+
+Allow the user to select a company and view its financial ratings. Show the rating fields, reporting periods, and dates returned by the actual API response.
+
+Do not invent financial scores, risk classifications, or field names. Use the official API schema.
+
+### Outreaches
+
+`https://api.sandbox.rrilabs.co/outreach-requests`
+
+Inspect the supplied API documentation to determine the supported HTTP methods, request schema, response schema, and permissions.
+
+Do not assume this endpoint supports GET, POST, PUT, or DELETE without confirmation. Implement only documented operations.
+
+## 4. Application Layout
+
+Build a clean enterprise dashboard with:
+
+- Fixed left sidebar
+- Top navigation header
+- Main content area
+- Breadcrumb navigation
+- Integration connection status
+- Refresh and reload actions
+- Loading indicators
+- Empty states
+- Error messages
+- Responsive layout
+
+The sidebar should contain:
+
+- Overview
+- Companies
+- Portfolios
+- Periods
+- Ratings
+- Outreaches
+- Schema Explorer
+- Schema Mapping
+- Sync History
+- Settings
+
+Use React Router for navigation. Highlight the currently selected page.
+
+## 5. Overview Page
+
+Display summary cards for:
+
+- Companies retrieved
+- Portfolios retrieved
+- Reporting periods retrieved
+- Ratings retrieved
+- Last successful API request
+- API connection status
+
+Use actual data returned by the APIs. If the API has not been connected, show an appropriate empty state or clearly labelled demo data.
+
+Do not invent live synchronization metrics.
+
+## 6. Companies Page
+
+Create a searchable, paginated table.
+
+Requirements:
+
+- Fetch companies through the API service.
+- Render columns based on the actual API schema.
+- Include search and refresh controls.
+- Allow users to open a company details drawer.
+- Include a button to view reporting periods.
+- Include a button to view ratings.
+- Preserve the provider's company identifier for subsequent API calls.
+- Handle missing values safely.
+
+Do not assume the API response is a direct array. Create a response adapter that supports the documented response structure.
+
+## 7. Portfolios Page
+
+Display portfolio records in a reusable data table.
+
+Requirements:
+
+- Search
+- Pagination
+- Refresh
+- Portfolio details drawer
+- Show related company information only when returned or documented
+- Loading, error, and empty states
+
+Do not fabricate relationships between portfolios and companies.
+
+## 8. Periods Page
+
+Provide a company selector.
+
+When the user selects a company:
+
+1. Read the selected company's actual RapidRatings identifier.
+2. Call the periods endpoint.
+3. Render the returned reporting periods.
+4. Show the period fields and dates available in the response.
+5. Allow navigation to the corresponding Ratings page.
+
+Display a useful message when no company is selected.
+
+## 9. Ratings Page
+
+Provide a company selector and a ratings table.
+
+Requirements:
+
+- Fetch ratings for the selected company.
+- Display only fields supported by the API response.
+- Preserve rating and reporting-period dates.
+- Support search and pagination where feasible.
+- Include a details drawer for the selected rating.
+- Handle missing ratings without inventing placeholder scores.
+- Distinguish actual provider data from demonstration data.
+
+Do not create your own financial risk score or score-to-risk-category mapping unless explicitly configured as a separate business rule.
+
+## 10. Outreaches Page
+
+Build an Outreaches page using the documented RapidRatings outreach API.
+
+Depending on the supported API operations, provide:
+
+- Outreach request list
+- Request details
+- Search and pagination
+- Create or submit request form only if the API supports it
+- Request status and timestamps only if returned
+- Validation and error handling
+
+If the endpoint documentation is unavailable, provide a schema-driven placeholder UI and clearly explain that API integration is pending confirmation. Do not send guessed payloads.
+
+## 11. Schema Explorer
+
+Implement a Schema Explorer page to inspect RapidRatings response structures.
+
+Requirements:
+
+- Display available resources: Companies, Portfolios, Periods, Ratings, and Outreaches.
+- Allow users to select a resource.
+- Show discovered field names and data types.
+- Identify required and optional fields only when the source schema provides this information.
+- Display sample response JSON when it has actually been retrieved.
+- Allow users to inspect nested objects and arrays.
+- Track the schema version or discovery timestamp when available.
+- Compare the discovered schema with the previous schema snapshot held in application state.
+- Identify added, removed, or type-changed fields.
+
+Clearly label inferred fields separately from fields declared by the official schema.
+
+Do not assume the provider offers a schema discovery endpoint. Use its OpenAPI specification or validated API responses.
+
+## 12. Schema Mapping
+
+Create a Schema Mapping page.
+
+Provide a source-to-target mapping table with these columns:
+
+- Source resource
+- Source field
+- Source data type
+- Target A1 entity
+- Target A1 property
+- Target data type
+- Mapping status
+- Validation result
+
+Features:
+
+- Select a RapidRatings source resource.
+- Display source fields discovered from its schema.
+- Allow the user to select a target entity and property.
+- Allow users to configure field mappings.
+- Validate compatible data types.
+- Flag missing required target properties.
+- Support mapping review and editing.
+- Support nested field paths where necessary.
+- Show unmapped source fields.
+- Show target properties without mappings.
+- Allow mappings to be saved in browser state for this demo.
+- Provide JSON export and import for mapping configurations.
+
+For the initial implementation, define target A1 entities through a configurable metadata registry or a clearly labelled example schema.
+
+Do not assume A1 already has particular entities or properties without project documentation.
+
+Keep source schema definitions separate from target schema definitions and mapping configuration.
+
+## 13. Sync History and Manual Sync
+
+Create a Sync History page.
+
+Support manual data retrieval and synchronization for resources where the API contract and data-use permissions allow it.
+
+Each sync run should show:
+
+- Resource
+- Start time
+- End time
+- Status
+- Records retrieved
+- Records processed
+- Error summary
+
+Requirements:
+
+- Provide a Sync Now action.
+- Prevent duplicate in-flight operations for the same resource.
+- Show progress when available.
+- Handle partial failures.
+- Allow safe retries.
+- Record execution results.
+- Distinguish a successful API fetch from a completed A1 data synchronization.
+- Clearly label browser-only history as temporary demo history.
+
+Do not claim that browser state provides durable or cross-user sync history.
+
+Do not persist or cache RapidRatings response data beyond the limits permitted by the applicable agreement. Where persistence is prohibited or uncertain, use transient processing and display only permitted information.
+
+## 14. Scheduled Sync Configuration
+
+Create a Settings page for sync scheduling.
+
+Provide configuration for:
+
+- Resource selection
+- Enabled or disabled status
+- Frequency
+- Timezone
+- Preferred execution time
+- Last run
+- Next planned run
+
+For a React-only application, implement the schedule configuration UI and validation only.
+
+Explain that reliable background scheduling requires a backend scheduler or external job runner. Do not use browser timers as a substitute for production scheduling.
+
+Store only non-sensitive demo configuration in browser state where appropriate.
+
+## 15. Suggested Project Structure
+
+```text
+src/
+  app/
+    App.tsx
+    router.tsx
+    queryClient.ts
+
+  components/
+    layout/
+      AppLayout.tsx
+      Sidebar.tsx
+      Header.tsx
+      Breadcrumbs.tsx
+
+    tables/
+      DataTable.tsx
+      TablePagination.tsx
+
+    common/
+      LoadingState.tsx
+      ErrorState.tsx
+      EmptyState.tsx
+      StatusBadge.tsx
+      JsonViewer.tsx
+
+  features/
+    overview/
+    companies/
+    portfolios/
+    periods/
+    ratings/
+    outreaches/
+    schema-explorer/
+    schema-mapping/
+    sync-history/
+    settings/
+
+  services/
+    httpClient.ts
+    rapidRatingsAuthService.ts
+    rapidRatingsCompanyService.ts
+    rapidRatingsPortfolioService.ts
+    rapidRatingsPeriodService.ts
+    rapidRatingsRatingService.ts
+    rapidRatingsOutreachService.ts
+
+  schemas/
+    sourceSchemaRegistry.ts
+    targetSchemaRegistry.ts
+    mappingSchema.ts
+
+  hooks/
+    useCompanies.ts
+    usePortfolios.ts
+    usePeriods.ts
+    useRatings.ts
+    useOutreaches.ts
+
+  types/
+    api.ts
+    company.ts
+    portfolio.ts
+    period.ts
+    rating.ts
+    outreach.ts
+    schema.ts
+    mapping.ts
+
+  utils/
+    responseAdapter.ts
+    fieldTypeDetector.ts
+    mappingValidator.ts
+
+  styles/
+
+.env.example
+.gitignore
+package.json
+README.md
+```
+
+Adapt the structure to the existing repository rather than duplicating existing modules.
+
+## 16. HTTP Client and Error Handling
+
+Create a shared Axios client with configurable base URLs.
+
+Requirements:
+
+- Add authentication headers only through the approved authentication service.
+- Do not hardcode access tokens.
+- Handle expired tokens according to the documented authentication mechanism.
+- Handle HTTP 400, 401, 403, 404, 429, and 5xx responses.
+- Add request timeouts.
+- Avoid infinite retry loops.
+- Redact secrets from errors and logs.
+- Do not log full sensitive API responses.
+- Keep the data API and outreach API base URLs separate.
+- Respect documented pagination and rate limits.
+
+## 17. UI Design
+
+Use a professional enterprise design inspired by modern supply-chain and PLM applications.
+
+Design requirements:
+
+- Clean white or neutral background
+- Compact sidebar
+- Clear page titles
+- Consistent spacing
+- Reusable table and detail components
+- Search and filter controls
+- Accessible form labels
+- Clear status indicators
+- Responsive design
+- Helpful empty and error states
+- No unnecessary animations
+
+## 18. Acceptance Criteria
+
+The implementation is complete when:
+
+1. The React application runs using Vite.
+2. All five resource pages are available through the sidebar.
+3. API URLs are configurable through environment variables.
+4. Authentication follows the documented RapidRatings contract.
+5. Companies and portfolios can be retrieved when valid credentials and browser access permit it.
+6. Periods and ratings are retrieved using the selected company's identifier.
+7. Outreaches uses only documented API operations.
+8. The Schema Explorer displays real discovered schema information.
+9. Schema Mapping supports source-to-target mappings and validation.
+10. Manual retrieval reports accurate execution results.
+11. Sync schedule configuration is available without pretending to run background jobs.
+12. Error, loading, and empty states are implemented.
+13. No confidential API secrets are exposed in the frontend bundle.
+14. No unsupported fields, endpoints, response structures, or scores are invented.
+15. The README documents setup, configuration, limitations, and the distinction between demo features and real API capabilities.
+
+## Final Instruction
+
+First inspect the existing repository and identify the current React version, routing, styling, dependencies, and conventions. Then implement the feature incrementally, reuse existing components, and verify the application builds successfully.
+
+If the official RapidRatings API specification or credentials are missing, implement the UI and typed integration interfaces first. Mark undocumented operations as pending rather than inventing API contracts.
+
+Keep the implementation modular so that the same Data Integrations framework can support additional providers in the future.

@@ -1,0 +1,1025 @@
+==========================================================================================
+ STEP-BY-STEP IMPLEMENTATION
+ Java OSGi Plug-in Development for ECTR UI and Metadata Validation
+==========================================================================================
+
+This file covers, in order:
+  - PART A: how the tools and the code connect, from the developer's point of view
+  - PART B: how the project was built, from an empty folder to a running OSGi runtime
+  - PART C: how to rebuild it, extend it, and later connect it to a real SAP ECTR system
+
+LEGEND
+  [VERIFIED]      Standard Java / OSGi / Maven / bnd. Compiled and tested in this project.
+  [ILLUSTRATIVE]  Stands in for the SAP ECTR API. Replace it once the ECTR SDK is available.
+  [TODO-SDK]      Needs the customer's ECTR SDK documentation. Cannot be verified here.
+
+Detailed explanations are in docs/01..10. This file is the short "what to do, in which
+order, and how it fits together" version.
+
+Last full check: 2026-10-26, "mvnw clean verify" -> 63 tests, 0 failures, BUILD SUCCESS;
+"java -jar ectr.jar" -> 11 bundles Active, 7 components SATISFIED, save and drop output as
+shown below.
+
+CONTENTS
+  PART A - HOW EVERYTHING CONNECTS (DEVELOPER VIEW)
+    A.1  The three layers in one sentence each
+    A.2  The tool chain at build time
+    A.3  What each tool does and what it hands to the next
+    A.4  What happens when you run java -jar ectr.jar
+    A.5  Component wiring: who gets injected into whom
+    A.6  Trace 1: ectr:save PRT-001, class by class
+    A.7  Trace 2: ectr:drop FLD-PACK ASM-100, class by class
+    A.8  The same picture with a real ECTR client
+    A.9  File -> role map
+  PART B - BUILD IT (PHASES 0-12)
+  PART C - CONFIGURE, EXTEND, GO LIVE (PHASES 13-18)
+
+
+##########################################################################################
+ PART A - HOW EVERYTHING CONNECTS (DEVELOPER VIEW)
+##########################################################################################
+
+------------------------------------------------------------------------------------------
+A.1  THE THREE LAYERS IN ONE SENTENCE EACH
+------------------------------------------------------------------------------------------
+
+  1. BUSINESS CODE   (api + core)  Plain Java 17. Knows nothing about ECTR, Felix or Maven.
+                                   It only talks to 5 small interfaces ("ports").
+  2. OSGi PLUMBING   (bnd + Felix + SCR)  Turns the jars into bundles, creates the objects
+                                   and wires them together at runtime from annotations.
+  3. HOST            (mock now, ECTR later)  Implements the ports that read data / show
+                                   messages, and calls the ports for "save" and "drop".
+
+  Rule of thumb: if you change a business rule you touch only core; if you change how
+  ECTR is reached you touch only the adapter; if a bundle does not start you look at
+  layer 2 (manifest, resolver, scr:info).
+
+
+------------------------------------------------------------------------------------------
+A.2  THE TOOL CHAIN AT BUILD TIME                                               [VERIFIED]
+------------------------------------------------------------------------------------------
+
+  mvnw / mvnw.cmd
+     |  downloads Maven 3.9.9 on first use, then runs it with your JDK 17
+     v
+  Maven reactor   builds modules in dependency order: api -> core -> mock -> runtime
+     |
+     |   for api, core and mock (each one is a bundle):
+     |     maven-compiler-plugin   .java -> .class (release 17)
+     |     bnd-maven-plugin        reads the classes + OSGi annotations and writes
+     |       (goal bnd-process)      META-INF/MANIFEST.MF
+     |                               OSGI-INF/<component class>.xml        (DS descriptors)
+     |                               OSGI-INF/metatype/<Config class>.xml  (config schema)
+     |     maven-surefire-plugin   runs the JUnit 5 tests (phase "test")
+     |     maven-jar-plugin        zips target/classes, using bnd's manifest unchanged
+     |
+     |   for runtime (packaging "pom", no Java code):
+     |     bnd-resolver-maven-plugin   ectr.bndrun "-runrequires" + the jars listed as
+     |       (phase package)           dependencies in the runtime pom
+     |                                 -> computes the full "-runbundles" list and writes
+     |                                    it back into ectr.bndrun
+     |     bnd-export-maven-plugin     -> target/ectr.jar (launcher + Felix + all bundles)
+     |     bnd-run-maven-plugin        optional: start the same runtime from Maven
+     v
+  ectr-plugin-runtime/target/ectr.jar   one executable jar, about 2 MB
+
+  Important: the OSGi annotation jars (osgi.annotation, ...component.annotations,
+  ...metatype.annotations) are "provided" scope. bnd reads them at BUILD time and turns
+  them into the manifest and XML above. They are not needed at runtime.
+
+
+------------------------------------------------------------------------------------------
+A.3  WHAT EACH TOOL DOES AND WHAT IT HANDS TO THE NEXT                          [VERIFIED]
+------------------------------------------------------------------------------------------
+
+  Tool                        Its job here                        Output used by
+  --------------------------  ----------------------------------  ------------------------
+  JDK 17                      compile + run; records, switch       everything
+                              expressions, System.Logger
+  Maven Wrapper               fixed Maven version, no install      developer, CI
+  Maven 3.9.9                 multi-module build, dependency       all plug-ins below
+                              versions (dependencyManagement)
+  OSGi annotations            @Component @Reference @Activate      bnd (build time only)
+                              @Designate @ObjectClassDefinition
+                              @Export @Version
+  bnd-maven-plugin 7.0.0      generates the manifest, DS XML and   jar plug-in, Felix, SCR
+                              Metatype XML; fails on bad imports
+  JUnit 5.10.2 + surefire     63 unit tests, no OSGi needed        build gate
+  bnd resolver                proves all bundles fit together;     ectr.bndrun, export
+                              fills -runbundles
+  bnd export                  builds the executable ectr.jar       java -jar
+  Apache Felix 7.0.5          the OSGi framework: one class        SCR, Gogo, our bundles
+                              loader per bundle, resolve,
+                              lifecycle, service registry
+  Felix SCR 2.2.10            Declarative Services: reads          our 7 components
+                              OSGI-INF/*.xml, creates components,
+                              injects references and Config.
+                              Needs org.osgi.service.component,
+                              org.osgi.util.promise, ...function
+  Gogo runtime/shell/command  the g! console; lb, scr:list,        developer
+                              scr:info; plus our ectr:* commands
+  Configuration Admin         OPTIONAL, not in the minimal         RuleRepository,
+                              runtime: supplies config values      ValidationSaveInterceptor,
+                              per PID (Phase 13)                   MockEctrSession
+  java.lang.System.Logger     logging without a dependency;        console / ECTR log
+                              routed to java.util.logging; the
+                              line format is set in ectr.bndrun
+
+  How the manifest connects the bundles (you can see it with
+  unzip -p ectr-plugin-core/target/ectr-plugin-core-1.0.0-SNAPSHOT.jar META-INF/MANIFEST.MF):
+     api   Export-Package: ...api.model;version=1.0.0, ...api.port;version=1.0.0
+     core  Import-Package: ...api.model;version="[1.0,2)", ...api.port;version="[1.0,2)"
+           Service-Component: OSGI-INF/...RuleRepository.xml, ...  (tells SCR what to create)
+           Require-Capability: osgi.service;(objectClass=...EctrSession);effective:=active
+                               (and the same for ObjectPropertyReader, UserNotifier)
+     mock  Import-Package: the api packages only
+  The "osgi.service" requirements are why ectr.bndrun sets "-resolve.effective: active":
+  the resolver must find a bundle that PROVIDES EctrSession etc. Locally that is the mock;
+  in ECTR it will be the SAP adapter.
+
+
+------------------------------------------------------------------------------------------
+A.4  WHAT HAPPENS WHEN YOU RUN  java -jar ectr.jar                              [VERIFIED]
+------------------------------------------------------------------------------------------
+
+  1. The bnd launcher inside ectr.jar starts Felix with the -runproperties of ectr.bndrun:
+       org.osgi.framework.storage.clean=onFirstInit   fresh felix-cache on every start
+       java.util.logging.SimpleFormatter.format=...   "INFO <logger>: <message>" lines
+  2. Felix installs the 10 -runbundles (11 with the system bundle) and RESOLVES each one:
+       every Import-Package must match an Export-Package with a compatible version, and
+       Require-Capability osgi.ee=JavaSE 17 must match the running JVM.
+       Missing match -> bundle stays INSTALLED (see Phase 18).
+  3. Felix starts the bundles -> ACTIVE. Our bundles have NO BundleActivator.
+  4. SCR (itself a bundle) sees the Service-Component header of core and mock, reads the
+     OSGI-INF/*.xml files and registers 7 components.
+  5. A component becomes SATISFIED when every mandatory @Reference has a service.
+     scr:list shows SATISFIED (not ACTIVE) right after start: these components are
+     "delayed", so SCR creates the object the first time somebody uses the service.
+     That is why the log line "Rules loaded (...)" appears only on the first ectr:save or
+     ectr:drop, not at start-up.
+  6. When it is created, SCR calls the @Activate CONSTRUCTOR with the injected services and
+     a Config object (annotation defaults, or Configuration Admin values when present).
+  7. Gogo sees the service of EctrShellCommands, whose properties are
+     osgi.command.scope=ectr and osgi.command.function=list,show,save,drop,lang,demo,
+     and offers them as ectr:list, ectr:show, ... at the g! prompt.
+
+
+------------------------------------------------------------------------------------------
+A.5  COMPONENT WIRING: WHO GETS INJECTED INTO WHOM                              [VERIFIED]
+------------------------------------------------------------------------------------------
+
+  Each arrow means "is injected into the @Activate constructor of".
+
+   ectr-plugin-mock (host side)                 ectr-plugin-core (plug-in side)
+   ----------------------------                 -------------------------------
+                                                RuleRepository
+                                                  (no references, only Config;
+                                                   loads both rule XML files)
+                                                     |            |
+   MockEctrSession ----- EctrSession ----------------+---> ValidationSaveInterceptor
+   ConsoleNotifier ----- UserNotifier ---------------+--->   (service SaveInterceptor)
+                                                     |
+   MockObjectRepository - ObjectPropertyReader -+    +---> ObjectBrowserDropHandler
+   MockEctrSession ----- EctrSession -----------+------->   (service DropHandler)
+   ConsoleNotifier ----- UserNotifier ----------+    RuleRepository ---^
+
+   EctrShellCommands  <--- MockObjectRepository, MockEctrSession,
+     (the fake client)     ALL SaveInterceptor services (cardinality MULTIPLE),
+                           ALL DropHandler services     (cardinality MULTIPLE)
+
+  So the dependency goes in both directions THROUGH THE PORTS ONLY:
+    core USES     ObjectPropertyReader, EctrSession, UserNotifier  (host implements them)
+    core PROVIDES SaveInterceptor, DropHandler                     (host calls them)
+  core never imports a mock class, and the mock never imports a core class.
+
+  Configuration PIDs (all optional, defaults in the code):
+    com.example.ectr.plugin.rules         validationRulesFile, packagingRulesFile  (core)
+    com.example.ectr.plugin.validation    blockOnViolation = true                  (core)
+    com.example.ectr.plugin.mock.session  userId = DEMO_USER, language = en        (mock)
+
+
+------------------------------------------------------------------------------------------
+A.6  TRACE 1:  g! ectr:save PRT-001                                             [VERIFIED]
+------------------------------------------------------------------------------------------
+
+   #  Class (module)                          What happens
+   -- --------------------------------------  ---------------------------------------------
+   1  Gogo -> EctrShellCommands.save (mock)   the "user clicked Save"
+   2  MockObjectRepository.read (mock)        -> Optional<EngineeringObject> PRT-001 (PART)
+                                              (real life: adapter maps the ECTR object)
+   3  ValidationSaveInterceptor.beforeSave    called once per registered SaveInterceptor
+      (core)
+   4  RuleRepository.validator()              the MetadataValidator built at activation
+   5  MetadataValidator.validate              RuleSet.rulesFor(PART) -> 7 rules from
+                                              validation-rules.xml
+   6  each ValidationRule.check               MandatoryFieldRule x4, PatternRule x2,
+                                              RequiredLanguagesRule x1
+                                              -> 3 Violations (ruleId + LocalizableMessage)
+   7  ValidationResult.isValid() = false
+   8  Messages(Support.safeLocale(session))   translate keys in the SESSION language:
+                                              save.blocked + TypeLabel(PART) -> "part",
+                                              validation.mandatory + FieldLabel(WEIGHT_KG)
+                                              -> "Weight (kg)", ...
+   9  System.Logger INFO                      "PRT-001: 3 validation violation(s)
+                                              [mandatory:WEIGHT_KG, pattern:REVISION,
+                                              description-languages], save blocked"
+  10  ConsoleNotifier.error (mock)            prints "[user ERROR] Cannot save part ..."
+  11  return SaveDecision.reject(lines)
+  12  EctrShellCommands                       allowed == false ->
+                                              "=> SAVE OF PRT-001 CANCELLED"
+
+  If step 3-8 throws a RuntimeException: Support.newIncidentReference() -> ECTR-XXXXXXXX,
+  stack trace to the log, "save.internalError" to the user, SaveDecision.reject
+  (FAIL CLOSED). With blockOnViolation=false step 10/11 become notifier.warn +
+  SaveDecision(true, lines).
+
+
+------------------------------------------------------------------------------------------
+A.7  TRACE 2:  g! ectr:drop FLD-PACK ASM-100                                    [VERIFIED]
+------------------------------------------------------------------------------------------
+
+   1  EctrShellCommands.drop (mock)           builds DropEvent([ASM-100], FLD-PACK, COPY)
+                                              (COPY is the default action)
+   2  ObjectBrowserDropHandler.onDrop (core)  delegates to its DragDropController
+   3  DragDropController.handle               reader.read(target) -> FOLDER,
+                                              reader.read(each source) -> ASSEMBLY
+   4  dropOntoFolder                          all sources are assemblies -> continue
+   5  validateStructures                      reader.structure(ASM-100).allObjectIds()
+                                              -> every object is read and run through the
+                                              SAME MetadataValidator as in Trace 1
+   6  PackagingRuleEngine.plan("ASM-100")     collect: leaf parts, quantity multiplied
+                                              along the path; drawings of every node via
+                                              findDrawingsFor
+                                              rules sorted by phase:
+                                                SameMaterialGroupRule   GROUP   MG-<group>
+                                                IncludeDrawingsRule     ENRICH  drawings
+                                                MaxComponentCountRule   SPLIT   max = 3
+                                              leftovers -> UNASSIGNED
+                                              -> PackagingPlan(rootId, packages, warnings)
+   7  DragDropResult(accepted=true,           messages = drop.packagingCreated +
+                     messages, plans)         one drop.packageLine per package
+   8  ObjectBrowserDropHandler                Messages translates, LOG INFO
+                                              "Drop [ASM-100] -> FLD-PACK (COPY): accepted",
+                                              ConsoleNotifier.info, DropOutcome(true, lines)
+   9  EctrShellCommands                       "=> DROP EXECUTED (simulated)"
+
+  Real output:
+     [user INFO ] Packaging plan for ASM-100: 6 packages.
+                     Package MG-CAST: PRT-101, PRT-111, DRW-101
+                     Package MG-MACHINED: PRT-102
+                     Package MG-SEAL: PRT-103, PRT-104
+                     Package MG-FASTENER-1: PRT-105, PRT-106, PRT-112
+                     Package MG-FASTENER-2: PRT-113
+                     Package DOCUMENTATION: DRW-100, DRW-110
+
+  Rejected drops use the same path but stop at step 3, 4 or 5, and step 8 calls
+  notifier.warn instead of info.
+
+
+------------------------------------------------------------------------------------------
+A.8  THE SAME PICTURE WITH A REAL ECTR CLIENT                                   [TODO-SDK]
+------------------------------------------------------------------------------------------
+
+  Local development (today)              Real ECTR client (later)
+  ------------------------------------   ---------------------------------------------
+  java -jar ectr.jar (Felix + SCR)       the ECTR client's way of loading Java
+                                         extensions (OSGi or not: find out, Phase 17)
+  EctrShellCommands (ectr:save/drop)     adapter code inside ECTR's before-save hook
+                                         and Object Browser drop hook
+  MockObjectRepository                   adapter ObjectPropertyReader using the ECTR
+                                         SDK / PlmConnector API + field mapping
+  MockEctrSession                        adapter EctrSession: logged-on user, UI language
+  ConsoleNotifier                        adapter UserNotifier: ECTR message dialogs
+  SampleData                             real SAP DMS documents, materials, BOMs
+  ectr-plugin-api, ectr-plugin-core      UNCHANGED - the same jars
+
+  That is the whole point of the ports: when you replace the left column with the right
+  column, nothing in api or core changes and all 58 core tests still apply.
+
+
+------------------------------------------------------------------------------------------
+A.9  FILE -> ROLE MAP
+------------------------------------------------------------------------------------------
+
+  pom.xml                                   parent: modules, versions, plug-in config
+  ectr-plugin-api/.../model/*.java          data the rules see (EngineeringObject, ...)
+  ectr-plugin-api/.../port/*.java           the 5 ports + their value types
+  ectr-plugin-api/.../package-info.java     @Export + @Version -> Export-Package
+  ectr-plugin-core/.../validation/          rules, RuleSet, RuleSetLoader, validator
+  ectr-plugin-core/.../packaging/           engine, context, 3 rules, loader
+  ectr-plugin-core/.../dnd/                 DragDropController, DragDropResult
+  ectr-plugin-core/.../i18n/                LocalizableMessage, Messages
+  ectr-plugin-core/.../config/              SecureXml, RuleConfigurationException
+  ectr-plugin-core/.../osgi/                the 3 DS components + Support
+  ectr-plugin-core/src/main/resources/rules/*.xml        bundled rule files (ENFORCED)
+  ectr-plugin-core/src/main/resources/.../i18n/messages*.properties   user texts
+  ectr-plugin-core/src/test/...             58 tests + TestFixtures.FakeReader
+  ectr-plugin-mock/...                      fake host + SampleData + ectr:* commands
+  ectr-plugin-runtime/ectr.bndrun           what the local runtime contains
+  config/plm_ea.sample.xml                  requirements sheet for ECTR UI (DISPLAYED)
+  docs/01..10                               the long explanations
+
+
+##########################################################################################
+ PART B - BUILD IT
+##########################################################################################
+
+------------------------------------------------------------------------------------------
+PHASE 0 - PREREQUISITES
+------------------------------------------------------------------------------------------
+
+Step 0.1  Install JDK 17 and check it:
+              java -version        -> must show 17.x
+          The wrapper uses JAVA_HOME if it is set, otherwise "java" on the PATH. Make sure
+          both point to 17, or the build may run on another JDK.
+
+Step 0.2  Maven is NOT required. The project includes the Maven Wrapper (mvnw / mvnw.cmd),
+          which downloads Maven 3.9.9 on first use. That first run needs internet access
+          (Maven Central for the plug-ins, Felix and JUnit as well).
+
+Step 0.3  Optional: an IDE with Maven support (VS Code + Java Extension Pack, IntelliJ, Eclipse).
+          Import the parent pom.xml; the IDE then sees all four modules.
+
+Step 0.4  Useful to have: "unzip" (Git Bash has it) to look inside the built jars.
+
+
+------------------------------------------------------------------------------------------
+PHASE 1 - DESIGN DECISION: PORTS AND ADAPTERS                                   [VERIFIED]
+------------------------------------------------------------------------------------------
+
+Step 1.1  Problem: we have no SAP ECTR SDK, and must not invent ECTR class names or events.
+
+Step 1.2  Solution: put ALL host access behind our own small interfaces ("ports").
+          - Business logic (core) depends only on these interfaces and the JDK.
+          - For local work, a mock bundle implements them.
+          - Later, a real adapter bundle (ectr-plugin-sap) implements them with the ECTR SDK.
+
+              ECTR client  <-->  ectr-plugin-sap (later)  -->  ectr-plugin-api  <--  ectr-plugin-core
+                                 ectr-plugin-mock (now)   -->  ectr-plugin-api
+
+          Benefits:
+          - no guessing about ECTR APIs: core never imports an ECTR class
+          - fast tests: 63 unit tests run in seconds on any machine
+          - release-proof: when ECTR changes its API, only the adapter changes
+
+Step 1.3  Module plan (Maven multi-module):
+              ectr-plugin-api      model + ports (exported packages)
+              ectr-plugin-core     validation, packaging, drag-and-drop, i18n, DS components
+                                   (exports NOTHING; internals stay private)
+              ectr-plugin-mock     in-memory "fake ECTR" + shell commands      [ILLUSTRATIVE]
+              ectr-plugin-runtime  Felix runtime packaged as ectr.jar
+
+
+------------------------------------------------------------------------------------------
+PHASE 2 - BUILD SETUP                                                           [VERIFIED]
+------------------------------------------------------------------------------------------
+
+Step 2.1  Create the parent pom.xml (packaging "pom"):
+          - modules: api, core, mock, runtime
+          - maven.compiler.release = 17, project.build.sourceEncoding = UTF-8
+          - dependencyManagement:
+              the three internal modules at ${project.version}
+              org.osgi:osgi.annotation 8.1.0                            (provided)
+              org.osgi:org.osgi.service.component.annotations 1.5.1     (provided)
+              org.osgi:org.osgi.service.metatype.annotations 1.4.1      (provided)
+              org.junit:junit-bom 5.10.2                                (import)
+          - pluginManagement:
+              bnd-maven-plugin 7.0.0, goal "bnd-process"
+                -> generates META-INF/MANIFEST.MF and the DS/Metatype XML
+              maven-jar-plugin 3.4.1
+                -> packages the manifest generated by bnd
+                   (<manifestFile>${project.build.outputDirectory}/META-INF/MANIFEST.MF)
+              bnd-resolver / bnd-export / bnd-run plugins 7.0.0
+              fixed versions for compiler, surefire, resources, install, clean plug-ins
+
+Step 2.2  Each bundle module (api, core, mock) declares:
+          - dependencies: ectr-plugin-api (not in api itself), the 3 OSGi annotation jars,
+            junit-jupiter (test)
+          - build plug-ins: bnd-maven-plugin + maven-jar-plugin (configured by the parent)
+
+Step 2.3  Generate the Maven Wrapper:
+              mvn -N org.apache.maven.plugins:maven-wrapper-plugin:3.3.2:wrapper
+                  -Dtype=only-script -Dmaven=3.9.9
+
+Step 2.4  Add a .gitignore that excludes target/, IDE files and felix-cache/.
+
+
+------------------------------------------------------------------------------------------
+PHASE 3 - API BUNDLE (ectr-plugin-api)                                          [VERIFIED]
+------------------------------------------------------------------------------------------
+
+Step 3.1  Create the model package  com.example.ectr.plugin.api.model
+          - ObjectType          enum: PART, ASSEMBLY, DRAWING, FOLDER
+          - PropertyKey         logical property names: MATERIAL_GROUP, MATERIAL,
+                                WEIGHT_KG, REVISION, CAD_FILE, STATUS, REFERENCED_OBJECT
+                                (OUR names. The adapter maps the real SAP fields onto them.)
+          - LocalizedText       record: Map<Locale,String> for multilingual descriptions
+                                - keys are normalised to the language only (de_DE -> de)
+                                - get(locale), getOrFallback(locale, ENGLISH), languages()
+          - EngineeringObject   record: id, type, properties, description (immutable)
+                                - property(key) returns Optional; blank counts as missing,
+                                  values are trimmed
+                                - properties are Strings only; rules check formats by regex
+          - CadStructureNode    record: objectId, quantity (>= 1), children (assembly tree)
+                                - leaf(), isLeaf(), walk(visitor), allObjectIds()
+
+Step 3.2  Create the port package  com.example.ectr.plugin.api.port             [ILLUSTRATIVE]
+          - ObjectPropertyReader  Optional<EngineeringObject> read(id)  (empty if unknown)
+                                  CadStructureNode structure(rootId)    (leaf for a part)
+                                  List<String> findDrawingsFor(id)
+                                  Implementations must be thread-safe.
+          - SaveInterceptor       beforeSave(object) -> SaveDecision(allowed, messages)
+                                  SaveDecision.allow() / SaveDecision.reject(messages);
+                                  messages may be non-empty even when allowed (warn mode)
+          - DropHandler           onDrop(DropEvent) -> DropOutcome(accepted, messages)
+          - DropEvent             record(sourceIds, targetId, action); needs >= 1 source
+          - DropAction            COPY, MOVE, LINK
+          - UserNotifier          info / warn / error (texts are already localized)
+          - EctrSession           userId(), locale()
+
+          Direction of each port:
+              ObjectPropertyReader, EctrSession, UserNotifier   core -> host (host implements)
+              SaveInterceptor, DropHandler                      host -> core (host calls)
+
+Step 3.3  Export both packages with package-info.java:
+              @org.osgi.annotation.bundle.Export
+              @org.osgi.annotation.versioning.Version("1.0.0")
+
+Step 3.4  Build and inspect the manifest:
+              mvnw -f ectr-plugin-api/pom.xml package
+              unzip -p ectr-plugin-api/target/ectr-plugin-api-1.0.0-SNAPSHOT.jar META-INF/MANIFEST.MF
+          Expected: "Export-Package: ...api.model;version=1.0.0, ...api.port;version=1.0.0"
+          and "Require-Capability: osgi.ee;filter:=(&(osgi.ee=JavaSE)(version=17))".
+
+
+------------------------------------------------------------------------------------------
+PHASE 4 - CORE: MESSAGES AND XML INFRASTRUCTURE                                 [VERIFIED]
+------------------------------------------------------------------------------------------
+
+Step 4.1  i18n package
+          - LocalizableMessage  record(key, args). Rules return keys, not text.
+                                Helper args: FieldLabel(propertyKey), TypeLabel(enum).
+                                A LocalizableMessage can also be an argument (nested).
+          - Messages            wraps ResourceBundle. Uses the session locale, NOT the JVM
+                                default locale (no-fallback control). Translates nested
+                                messages and labels (field.<KEY>, type.<TYPE>).
+                                Passes the bundle's own class loader explicitly, so it
+                                works inside OSGi.
+                                A missing key is shown as "key [args]" instead of failing.
+          - messages.properties      (English base)
+          - messages_de.properties   (German, UTF-8)
+          Rules for writing message texts:
+            - a literal apostrophe is written ''
+            - leading spaces are written '  ' (java.util.Properties strips unquoted spaces)
+            - plurals use {0,choice,1#1 object|1<{0} objects}
+
+Step 4.2  config package
+          - RuleConfigurationException
+          - SecureXml   JAXP DOM parser hardened against XXE: DOCTYPE disallowed,
+                        external entities off. It loads either an external file path or
+                        the default resource packaged in the bundle.
+
+
+------------------------------------------------------------------------------------------
+PHASE 5 - CORE: MANDATORY-FIELD VALIDATION                                      [VERIFIED]
+------------------------------------------------------------------------------------------
+
+Step 5.1  Create the rule interface and result types (package ...core.validation):
+              ValidationRule     id(), check(object) -> Optional<Violation>
+              Violation          objectId, ruleId, propertyKey (null for object-level
+                                 rules), LocalizableMessage
+              ValidationResult   list of violations, isValid(), merge()
+
+Step 5.2  Implement the rules:
+              MandatoryFieldRule      value must exist and not be blank
+              PatternRule             if a value exists, the whole value must match the regex
+              RequiredLanguagesRule   description needed in each listed language
+          PatternRule ignores empty values on purpose: combine it with <mandatory> so the
+          user gets one clear message ("mandatory") instead of two.
+
+Step 5.3  RuleSet (rules per ObjectType) and MetadataValidator (runs all rules and
+          collects ALL violations, so the user can fix everything at once).
+
+Step 5.4  RuleSetLoader reads src/main/resources/rules/validation-rules.xml:
+              <validation-rules>
+                <object-type name="PART">
+                  <mandatory property="MATERIAL_GROUP"/>
+                  <mandatory property="MATERIAL"/>
+                  <mandatory property="WEIGHT_KG"/>
+                  <pattern   property="WEIGHT_KG" regex="\d{1,6}(\.\d{1,3})?" example="12.5"/>
+                  <mandatory property="REVISION"/>
+                  <pattern   property="REVISION" regex="[A-Z]{1,2}" example="A, B ... ZZ"/>
+                  <description-languages required="en,de"/>
+                </object-type>
+                <object-type name="ASSEMBLY"> REVISION mandatory + pattern, en,de </object-type>
+                <object-type name="DRAWING">  REFERENCED_OBJECT, REVISION, en     </object-type>
+                <!-- FOLDER has no rules: folders are never validated. -->
+              </validation-rules>
+          The loader fails with a clear message on any of these, so a typo can never
+          silently disable a check:
+            - unknown element
+            - unknown object type
+            - duplicate object type
+            - bad regex
+            - missing attribute
+            - <!DOCTYPE> / external entities (XXE)
+
+
+------------------------------------------------------------------------------------------
+PHASE 6 - CORE: ASSEMBLY PACKAGING RULES                                        [VERIFIED]
+------------------------------------------------------------------------------------------
+
+Step 6.1  Create the PackagingRule interface: id(), phase(), apply(context).
+          The phases run in this order:
+              GROUP   put components into packages
+              ENRICH  add related objects (drawings) to packages
+              SPLIT   reshape packages after their content is final
+          Sorting by phase means a misordered XML file cannot, for example, split packages
+          before the drawings were added.
+
+Step 6.2  PackagingContext holds the working state of one run: root, leaf components,
+          total quantities, drawings, packages (name -> ids) and warnings.
+          Helpers used by rules: components(), isPackaged(id), addToPackage(name, id), warn().
+
+Step 6.3  PackagingRuleEngine.plan(rootId):
+          1. read the root and its CAD structure through ObjectPropertyReader
+             (unknown root -> NoSuchElementException)
+          2. collect the leaf components, multiplying quantities along the path
+             (2 x SUB, each with 3 x P  ->  6 x P)
+          3. collect the drawings of every node; unreadable objects become warnings
+          4. sort the rules by phase (stable sort) and apply them
+          5. put anything left over into package "UNASSIGNED" (nothing is lost)
+          6. return a PackagingPlan(rootId, packages, warnings)
+
+Step 6.4  Implement the sample rules (the business meaning is ILLUSTRATIVE; replace it
+          with the client's policy):
+              SameMaterialGroupRule   (GROUP)   package "MG-<group>"; no group -> warning,
+                                                part ends up in UNASSIGNED
+              IncludeDrawingsRule     (ENRICH)  drawing joins the package of its
+                                                REFERENCED_OBJECT, else "DOCUMENTATION"
+              MaxComponentCountRule   (SPLIT)   NAME-1, NAME-2, ... when size > max
+
+Step 6.5  PackagingRulesLoader reads rules/packaging-rules.xml:
+              <packaging-rules>
+                <rule id="group-by-material-group"/>
+                <rule id="include-drawings"/>
+                <rule id="max-components-per-package" max="3"/>
+              </packaging-rules>
+          An unknown rule id fails loading and lists the allowed ids.
+
+Step 6.6  A PackagingPlan is a PROPOSAL (package name -> object ids, plus warnings).
+          Saving it in SAP is not part of this project (see Phase 17.7).
+
+
+------------------------------------------------------------------------------------------
+PHASE 7 - CORE: DRAG-AND-DROP BUSINESS RULES                                    [VERIFIED]
+------------------------------------------------------------------------------------------
+
+Step 7.1  DragDropResult: accepted, messages (LocalizableMessage), packaging plans.
+
+Step 7.2  DragDropController.handle(DropEvent) applies these rules:
+          - unknown target or source  -> reject (drop.unknownObject)
+          - target FOLDER:
+              * only assemblies are allowed (drop.onlyAssembliesToFolder)
+              * validate EVERY object in each structure; reject with details if invalid
+                (drop.invalidSource + one drop.violationLine per violation)
+              * otherwise build a packaging plan for each assembly -> accept
+                (drop.packagingCreated + drop.packageLine per package)
+          - target ASSEMBLY:
+              * reject a cycle (source == target, or the target is in the source structure)
+                (drop.cycle)
+              * validate the sources and their structures -> accept (drop.linkAccepted)
+                or reject
+          - target PART or DRAWING -> reject (drop.unsupportedTarget)
+          Every rejection includes the reason. A refused drop with no explanation is the
+          most common complaint about UI customisations.
+
+Step 7.3  Validation in a drop uses the SAME MetadataValidator as the save check, so an
+          object that cannot be saved cannot be packaged either.
+
+
+------------------------------------------------------------------------------------------
+PHASE 8 - CORE: OSGi DECLARATIVE SERVICES COMPONENTS                            [VERIFIED]
+------------------------------------------------------------------------------------------
+
+Step 8.0  Common pattern for all components:
+          - @Component on the class, @Activate on the CONSTRUCTOR (DS 1.4+)
+          - @Reference on constructor parameters: static, mandatory references, so the
+            component starts only when all of its services exist
+          - @Designate(ocd = Config.class) + an @ObjectClassDefinition @interface Config
+            with defaults in the code; overridable through Configuration Admin by PID
+          - the class stays immutable, and unit tests simply call "new ...(...)" without
+            starting any framework
+
+Step 8.1  RuleRepository                      @Component, PID com.example.ectr.plugin.rules
+          - Metatype config: validationRulesFile, packagingRulesFile (empty = bundled)
+          - loads both XML files once and shares them: validator(), packagingRules()
+          - broken XML -> logs ERROR and activation fails, so dependent components stay
+            unsatisfied (fail fast, visible in scr:info)
+          - a configuration change re-creates the component, which reloads the files
+          - RuleRepository.bundledDefaults() builds it without OSGi (tests, non-OSGi host)
+
+Step 8.2  ValidationSaveInterceptor           @Component(service = SaveInterceptor.class)
+          - PID com.example.ectr.plugin.validation
+          - constructor injection: RuleRepository, EctrSession, UserNotifier, Config
+          - config: blockOnViolation (default true; false = warning-only roll-out)
+          - valid    -> SaveDecision.allow()               (log DEBUG)
+          - invalid  -> localized list -> UserNotifier.error -> SaveDecision.reject
+                        (warning mode: UserNotifier.warn -> SaveDecision(true, lines))
+                        (log INFO with object id and rule ids)
+          - crash    -> incident reference ECTR-XXXXXXXX logged with stack trace,
+                        save BLOCKED (fail closed)
+
+Step 8.3  ObjectBrowserDropHandler            @Component(service = DropHandler.class)
+          - constructor injection: ObjectPropertyReader, RuleRepository, EctrSession,
+            UserNotifier
+          - builds a DragDropController from the reader, validator and packaging engine
+          - translates the result into the session language and notifies the user
+            (accepted -> info, rejected -> warn)
+          - on a crash it handles errors the same way as Step 8.2 (incident reference, drop cancelled)
+
+Step 8.4  Support helper: newIncidentReference(), safeLocale(session) (English fallback,
+          logs a WARNING if the session cannot tell the language).
+
+Step 8.5  Logging uses java.lang.System.Logger. That adds no dependency.
+          Levels:  ERROR   = needs support
+                   WARNING = degraded but working
+                   INFO    = one line per user decision (save blocked/allowed, drop
+                             accepted/rejected)
+                   DEBUG   = passed validations
+          Log object ids and rule ids, never full property maps (confidential engineering
+          data) and never credentials.
+
+Step 8.6  Three audiences, three channels:
+              engineer        -> UserNotifier         localized, actionable, only the
+                                                      incident reference as an id
+              support / dev   -> System.Logger        ids, rule ids, stack traces
+              host / caller   -> SaveDecision /       allowed / accepted + the same lines
+                                 DropOutcome
+          Business-rule violations are RESULTS, not exceptions. Only unexpected errors are
+          exceptions, and they always end in a blocked action.
+
+
+------------------------------------------------------------------------------------------
+PHASE 9 - UNIT TESTS                                                            [VERIFIED]
+------------------------------------------------------------------------------------------
+
+Step 9.1  TestFixtures.FakeReader is an in-memory ObjectPropertyReader for core tests.
+          The core tests do not depend on the mock bundle.
+
+Step 9.2  Test classes (63 tests in total: 58 in core, 5 in mock):
+              ValidationRulesTest           16  each rule: pass / fail / blank / regional
+                                                locale (includes parameterized cases)
+              RuleSetLoaderTest             12  bundled XML, external file, every error
+                                                case, XXE
+              PackagingRuleEngineTest        9  grouping, drawings, split, phase order,
+                                                quantities, unreadable objects, loader errors
+              DragDropControllerTest         9  folder, assembly, cycle, part target,
+                                                unknown ids
+              MessagesTest                   7  EN/DE texts, fallback, plurals, nested
+                                                messages, "German file has every English key"
+              ValidationSaveInterceptorTest  5  block, warn-only, German, fail-closed on a crash
+              MockObjectRepositoryTest       5  sample data consistency
+
+Step 9.3  Assert rule ids and message keys, not English text (except in MessagesTest).
+          Changing a translation then never breaks a test. One test per rule branch and
+          per XML error case.
+
+Step 9.4  Run the tests:
+              mvnw test
+
+Step 9.5  Example (from RuleSetLoaderTest style):
+              MetadataValidator validator = new MetadataValidator(RuleSetLoader.load(""));
+              ValidationResult result = validator.validate(incompletePart);
+              assertEquals(List.of("mandatory:MATERIAL_GROUP", "mandatory:MATERIAL",
+                                   "mandatory:WEIGHT_KG", "pattern:REVISION",
+                                   "description-languages"),
+                           result.violations().stream().map(Violation::ruleId).toList());
+
+
+------------------------------------------------------------------------------------------
+PHASE 10 - MOCK HOST (ectr-plugin-mock)                                     [ILLUSTRATIVE]
+------------------------------------------------------------------------------------------
+
+Step 10.1  SampleData contains invented demo objects:
+               FLD-PACK  packaging folder
+               ASM-100   brake caliper assembly (complete, with sub-assembly SUB-110,
+                         drawings DRW-100, DRW-101, DRW-110)
+               ASM-200   wheel hub assembly (PRT-202 incomplete: no material group,
+                         no German text)
+               PRT-001   incomplete part (the save gets blocked)
+               PRT-002   complete part (the save is allowed)
+
+Step 10.2  Port implementations, as DS components:
+               MockObjectRepository  -> ObjectPropertyReader
+               ConsoleNotifier       -> UserNotifier (prints "[user ERROR] ...")
+               MockEctrSession       -> EctrSession (language can be switched;
+                                        PID com.example.ectr.plugin.mock.session:
+                                        userId = DEMO_USER, language = en)
+
+Step 10.3  EctrShellCommands: Gogo commands in scope "ectr" that play the ECTR client:
+               ectr:list | ectr:show <id> | ectr:save <id>
+               ectr:drop <target> <src1,src2> [COPY|MOVE|LINK]   (default COPY)
+               ectr:lang <en|de> | ectr:demo
+           Registered with the standard service properties osgi.command.scope and
+           osgi.command.function. It receives ALL SaveInterceptor and DropHandler services
+           (cardinality MULTIPLE) and calls each of them, exactly like a host would.
+
+Step 10.4  The mock bundle imports only the api packages. It is never deployed to ECTR.
+
+
+------------------------------------------------------------------------------------------
+PHASE 11 - LOCAL OSGi RUNTIME (ectr-plugin-runtime)                             [VERIFIED]
+------------------------------------------------------------------------------------------
+
+Step 11.1  Dependencies: the 3 plug-in bundles, Felix framework 7.0.5, Felix SCR 2.2.10,
+           org.osgi.service.component 1.5.1, org.osgi.util.promise 1.3.0,
+           org.osgi.util.function 1.2.0, Gogo runtime 1.1.6 / shell 1.1.4 / command 1.1.2.
+           These dependencies are the "repository" the resolver chooses from.
+
+Step 11.2  ectr.bndrun:
+               -runfw: org.apache.felix.framework
+               -runee: JavaSE-17
+               -runrequires: ectr-plugin-core, ectr-plugin-mock, gogo shell, gogo command
+               -resolve.effective: active    (also resolve osgi.service requirements)
+               -runproperties: org.osgi.framework.storage.clean=onFirstInit,
+                               java.util.logging.SimpleFormatter.format=...
+           The bnd resolver writes -runbundles automatically during "package"
+           (failOnChanges=false). Do not edit -runbundles by hand. Commit that change.
+
+Step 11.3  bnd-export-maven-plugin creates target/ectr.jar, an executable jar that
+           contains Felix and all the bundles.
+
+
+------------------------------------------------------------------------------------------
+PHASE 12 - BUILD, RUN AND VERIFY                                                [VERIFIED]
+------------------------------------------------------------------------------------------
+
+Step 12.1  Full build:
+               Windows:   .\mvnw.cmd clean verify
+               Bash:      ./mvnw clean verify
+           Expected: 63 tests, 0 failures, BUILD SUCCESS, file
+           ectr-plugin-runtime/target/ectr.jar.
+           (A "SEVERE: Validation of PRT-9 failed" line is expected. It comes from the
+           fail-closed test.)
+
+Step 12.2  Start the runtime:
+               java -jar ectr-plugin-runtime/target/ectr.jar
+           Alternative, from Maven:
+               mvnw -pl ectr-plugin-runtime -am package bnd-run:run
+
+Step 12.3  At the g! prompt:
+               lb                    all 11 bundles Active
+               scr:list              all 7 components SATISFIED
+               ectr:list             the demo objects
+               ectr:show ASM-100     properties, descriptions, structure, drawings
+               ectr:demo             walkthrough of every feature
+               stop 0                quit
+
+Step 12.4  Expected results:
+           - ectr:save PRT-001 -> "Cannot save part PRT-001" plus 3 reasons, save cancelled
+           - ectr:lang de, then save again -> the same messages in German
+           - ectr:save PRT-002 -> "PRT-002 SAVED (simulated)"
+           - ectr:drop FLD-PACK ASM-100 -> packaging plan with 6 packages
+           - ectr:drop FLD-PACK ASM-200 -> rejected, PRT-202 is incomplete
+           - ectr:drop ASM-200 PRT-002 LINK -> accepted, 1 object can be added
+           - ectr:drop SUB-110 ASM-100 LINK -> rejected, cycle
+
+Step 12.5  Garbled umlauts in the console come from the Windows code page. Fix:
+               chcp 65001
+               java -Dstdout.encoding=UTF-8 -jar ectr-plugin-runtime\target\ectr.jar
+
+Step 12.6  Smoke test without typing (Bash), e.g. for CI:
+               (sleep 5; printf 'scr:list\nectr:demo\n'; sleep 6; printf 'stop 0\n') \
+                 | java -jar ectr-plugin-runtime/target/ectr.jar
+           The "sleep 5" gives SCR time to start. Commands sent earlier fail with
+           CommandNotFoundException.
+
+
+##########################################################################################
+ PART C - CONFIGURE, EXTEND, GO LIVE
+##########################################################################################
+
+------------------------------------------------------------------------------------------
+PHASE 13 - CONFIGURATION WITHOUT REBUILDING                                     [VERIFIED]
+------------------------------------------------------------------------------------------
+
+Step 13.1  Copy rules/validation-rules.xml or packaging-rules.xml to an external folder and edit it.
+
+Step 13.2  Point the PID com.example.ectr.plugin.rules at the file:
+               validationRulesFile = C:/ectr/plugin-config/validation-rules.xml
+               packagingRulesFile  = C:/ectr/plugin-config/packaging-rules.xml
+           This needs Configuration Admin (org.apache.felix.configadmin) in the runtime.
+           It is NOT part of the minimal local runtime. To try it locally:
+             a) add org.apache.felix.configadmin as a dependency of ectr-plugin-runtime
+             b) add it to -runrequires in ectr.bndrun
+             c) mvnw verify (the resolver adds it to -runbundles)
+           Configuration values are then usually supplied as .cfg / .config files
+           (for example with Felix FileInstall). This optional set-up has not been
+           exercised in this project.
+           A change re-creates RuleRepository, which reloads the files. If the new file is
+           broken, RuleRepository does not activate, and validation and drop handling stay
+           OFF in a visible way (scr:info). A typo never silently disables a check.
+
+Step 13.3  For a soft roll-out, set PID com.example.ectr.plugin.validation:
+               blockOnViolation = false    (users can save, but are warned)
+
+Step 13.4  config/plm_ea.sample.xml is a REQUIREMENTS SHEET, not real plm_ea.xml syntax.
+           Fill it in with the ECTR administrator: fields, order, labels per language,
+           drop targets, and the field mapping.                                   [TODO-SDK]
+
+Step 13.5  Two kinds of XML, keep them consistent:
+               our rule files    owner: plug-in team     control what is ENFORCED
+               ECTR plm_ea.xml   owner: ECTR admin       control what is DISPLAYED
+           If the layout marks a field as required, the rule file must enforce it too;
+           only the plug-in actually blocks the save. Keep the ECTR screen labels identical
+           to the field.* texts in messages*.properties, so error messages use the same
+           words as the screen.
+
+Step 13.6  Changing the real plm_ea.xml (with the ECTR administrator):        [TODO-SDK]
+           1. get the customer's current file and version it in their config repository
+           2. learn how fields are declared, ordered and labelled per language from SAP's
+              documentation for that release
+           3. change it in a test client first; restart or reload ECTR as documented
+           4. keep labels identical to the field.* message keys
+
+
+------------------------------------------------------------------------------------------
+PHASE 14 - EXTENDING THE PROJECT                                                [VERIFIED]
+------------------------------------------------------------------------------------------
+
+New validation rule:
+  1. Implement ValidationRule (stateless: id() + check(obj) -> Optional<Violation>).
+  2. Add a message key to messages.properties AND messages_de.properties.
+     (MessagesTest.germanBundleHasEveryEnglishKey fails if you forget the German one.)
+  3. Add a case in RuleSetLoader.parseRule.
+  4. Add a unit test.
+
+New packaging rule:
+  1. Implement PackagingRule with the right phase.
+  2. Add a case in PackagingRulesLoader.
+  3. List it in packaging-rules.xml (order matters only within the same phase:
+     a rule that must claim parts first goes BEFORE group-by-material-group).
+  4. Add a unit test.
+
+New language:
+  1. Create messages_<lang>.properties (UTF-8).
+  2. Add the language to <description-languages required="...">, if descriptions in that
+     language are mandatory.
+  3. Add a completeness test like the one for German.
+
+New property:
+  1. Add the constant in PropertyKey.
+  2. Add the field.<KEY> label in every message file.
+  3. Add the mapping in the adapter.
+
+Changing a port (an interface in ...api.port):
+  1. Adding a method is a MAJOR change for implementers (the adapter).
+  2. Bump @Version in that package-info.java accordingly (see Phase 16).
+
+
+------------------------------------------------------------------------------------------
+PHASE 15 - TEST PYRAMID (WHAT PROVES WHAT)                                      [VERIFIED]
+------------------------------------------------------------------------------------------
+
+  Level               What it proves                                  Command
+  ------------------  ----------------------------------------------  --------------------
+  Unit (JUnit 5)      rules, loaders, engine, drop rules, messages,   mvnw test
+                      the DS save component
+  Bundle checks       bnd checks imports/exports, writes DS and       mvnw package
+                      Metatype XML; a bad import fails the build
+  Resolve             all bundles + Felix/SCR/Gogo fit together       mvnw verify
+  Runtime smoke test  components wire up, commands work end to end    java -jar ... ectr:demo
+  Integration in ECTR adapter + real hooks + test SAP client          [TODO-SDK]
+
+
+------------------------------------------------------------------------------------------
+PHASE 16 - RELEASE HYGIENE                                                      [VERIFIED]
+------------------------------------------------------------------------------------------
+
+Step 16.1  Bump the package version in package-info.java when you change a port.
+           Imports are written as ranges ("[1.0,2)"), so a major bump makes old adapters
+           fail to resolve instead of failing at runtime.
+
+Step 16.2  Optional: enable bnd baselining (bnd-baseline-maven-plugin) once a 1.0.0
+           release exists in a repository. It then fails builds that change the API
+           without the right version bump.
+
+Step 16.3  Commit the -runbundles change that the resolver writes into ectr.bndrun.
+
+
+------------------------------------------------------------------------------------------
+PHASE 17 - CONNECTING TO REAL SAP ECTR                                          [TODO-SDK]
+------------------------------------------------------------------------------------------
+
+Step 17.1  Get the ECTR SDK / customer API documentation for the customer's exact ECTR
+           release, and check that the PlmConnector API (or equivalent) is licensed.
+
+Step 17.2  Answer these questions from the documentation:
+           a) How are customer Java extensions packaged and loaded? (OSGi bundle?
+              plug-in folder? registration file?)
+              If ECTR does NOT host OSGi bundles for customer code, api and core still
+              work as plain jars: call RuleRepository.bundledDefaults() and create the
+              components with "new", exactly as the unit tests do.
+           b) Which hook runs BEFORE SAVE, and how is a save vetoed?
+           c) Which hook delivers Object Browser DROP events? What is in the transfer
+              data, and can a drop be refused?
+              (If the client UI is Swing-based, a TransferHandler-style callback is likely;
+              that is an ASSUMPTION to verify.)
+           d) Which API reads attributes, CAD structure and document links?
+           e) How does a plug-in show info, warning and error messages in the client?
+           f) On which thread are the hooks called? (Never block the UI thread.)
+           g) Which Java version does the client run? The bundles need Java 17.
+              If it is older: lower maven.compiler.release and remove records, switch
+              expressions and pattern matching. That is a significant change, so confirm
+              the JVM version first.
+           h) Where does the client write its log files?
+
+Step 17.3  Create a new module, ectr-plugin-sap, with the ECTR SDK as a "provided" dependency:
+           - implement ObjectPropertyReader  (map ECTR objects -> EngineeringObject)
+           - implement EctrSession           (user, UI language)
+           - implement UserNotifier          (ECTR message dialogs)
+           - in the before-save hook:  call SaveInterceptor.beforeSave(), honour allowed()
+           - in the drop hook:         build a DropEvent, call DropHandler.onDrop(),
+                                       honour accepted()
+           Do NOT add any ECTR import to api or core.
+           Do NOT embed the api classes in the adapter jar; import them (else
+           ClassCastException between identical class names).
+
+           Illustrative skeleton (every Ectr... / sdk... name is a PLACEHOLDER):
+               @Component(service = ObjectPropertyReader.class)
+               public final class SapObjectPropertyReader implements ObjectPropertyReader {
+                   public Optional<EngineeringObject> read(String objectId) {
+                       // 1. look up the object with the SDK   (placeholder)
+                       // 2. read the attributes the rules need (field mapping)
+                       // 3. read descriptions per language
+                       // 4. map the ECTR object type to ObjectType explicitly
+                       // 5. return new EngineeringObject(id, type, props, description)
+                       throw new UnsupportedOperationException("TODO (SDK)");
+                   }
+               }
+
+Step 17.4  Rules for the real ObjectPropertyReader:
+           1. return Optional.empty() for unknown ids; never null, never throw
+           2. be thread-safe (DS can call it from several threads)
+           3. batch backend calls: a 500-part structure must not mean 500 single RFCs
+           4. cache only for the duration of one user action (no stale validation)
+           5. map object types explicitly; an unknown ECTR type must not silently become
+              a PART (log it, or map it to something without rules)
+           For very large assemblies, consider accepting the drop and running packaging in
+           the background, if the SDK allows it and the business accepts it.
+
+Step 17.5  Fill in the field mapping (logical PropertyKey -> real SAP/ECTR attribute),
+           in the field-mapping section of config/plm_ea.sample.xml.
+
+Step 17.6  Deploy: ectr-plugin-api + ectr-plugin-core + ectr-plugin-sap
+                   (+ external rule files if used).
+           NEVER deploy ectr-plugin-mock to a real client.
+
+Step 17.7  Smoke test in an ECTR test client:
+           - one blocked save
+           - one allowed save
+           - one packaging drop
+           - one refused drop
+           Then roll out, warning-only first if the business wants that.
+
+Step 17.8  The packaging plan is only a proposal. Saving it in SAP (documents, BOM variant,
+           handling units, ...) is a separate step to be agreed with the SAP functional team.
+
+Open items before go-live (all [TODO-SDK]):
+   1  how the ECTR release loads Java extensions      7  hook threading model
+   2  before-save hook + veto                          8  real plm_ea.xml syntax
+   3  drop hook + transfer data                        9  write ectr-plugin-sap
+   4  metadata API (PlmConnector, licence)            10  persist PackagingPlan in SAP
+   5  field mapping PropertyKey -> SAP attribute      11  client JVM version (Java 17)
+   6  message dialog API + log location
+
+
+------------------------------------------------------------------------------------------
+PHASE 18 - TROUBLESHOOTING QUICK LIST
+------------------------------------------------------------------------------------------
+
+Bundle "Installed", not Active   -> start <id> shows the missing requirement; headers <id>
+                                    shows the imports; check the Java version and that the
+                                    api bundle is present
+"No SaveInterceptor registered"  -> scr:list / scr:info <component>; check for a missing reference
+                                    (EctrSession, UserNotifier, RuleRepository)
+RuleRepository not satisfied     -> broken rule XML; the log names the exact problem
+                                    ("Validation rules not loaded: ...")
+Nothing from DS works at all     -> SCR not running: lb must show Apache Felix Declarative
+                                    Services Active, plus org.osgi.util.promise / function
+Command not found: ectr:...      -> the mock bundle is not active, or SCR is still starting; wait
+ClassNotFoundException (adapter) -> adapter Import-Package does not match api Export-Package
+                                    (package or version)
+ClassCastException, same class   -> api classes are embedded twice; import them, do not embed them
+Messages in the wrong language   -> EctrSession.locale() in the adapter (the JVM default
+                                    locale is ignored)
+Key shown instead of text        -> the key is missing in a messages_*.properties file
+Umlauts garbled in the console   -> console code page: chcp 65001 + -Dstdout.encoding=UTF-8
+                                    (the ECTR UI itself is not affected)
+Resolver fails in mvnw verify    -> read "Unresolved requirements"; add the missing bundle
+                                    to the runtime pom
+Old bundle versions in Felix     -> storage.clean=onFirstInit is set; otherwise delete felix-cache/
+
+Full table: docs/10-testing-deployment-troubleshooting.md
+==========================================================================================

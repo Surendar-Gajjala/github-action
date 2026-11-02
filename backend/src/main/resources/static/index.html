@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Items</title>
+    <style>
+        body { font-family: system-ui, sans-serif; margin: 1.5rem; color: #1f2328; }
+        header { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
+        h1 { font-size: 1.25rem; margin: 0; }
+        input { padding: .4rem .6rem; min-width: 16rem; }
+        #status { color: #57606a; }
+        #status.error { color: #cf222e; }
+        .table-wrap { overflow-x: auto; }
+        table { border-collapse: collapse; width: 100%; font-size: .875rem; }
+        th, td { border-bottom: 1px solid #d0d7de; padding: .4rem .6rem; text-align: left; white-space: nowrap; }
+        th { background: #f6f8fa; position: sticky; top: 0; }
+        td.num { text-align: right; }
+    </style>
+</head>
+<body>
+<header>
+    <h1>Items</h1>
+    <input id="filter" type="search" placeholder="Filter by number, description, unit..." aria-label="Filter items">
+    <span id="status" role="status">Loading…</span>
+</header>
+<div class="table-wrap">
+    <table>
+        <thead>
+        <tr>
+            <th>ID</th><th>Item Number</th><th>Description</th><th>Revision</th><th>Business Unit</th>
+            <th>Product</th><th>Structure Role</th><th>ODM Name</th><th>ODM Active</th>
+            <th>Availability Risk</th><th>Used In Products</th><th>Families Impacted</th><th>Status</th>
+        </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+    </table>
+</div>
+<script>
+    // The frontend talks only to the local API; it never sees the hosted server or its token.
+    const rowsEl = document.getElementById('rows');
+    const statusEl = document.getElementById('status');
+    const filterEl = document.getElementById('filter');
+    let items = [];
+
+    const fmt = v => v === null || v === undefined ? '' : String(v);
+    const yesNo = v => v === true ? 'Yes' : v === false ? 'No' : '';
+    const list = (v, f = fmt) => Array.isArray(v) ? v.map(f).join(', ') : '';
+
+    function cell(text, cls) {
+        const td = document.createElement('td');
+        td.textContent = text;
+        if (cls) td.className = cls;
+        return td;
+    }
+
+    function render() {
+        const q = filterEl.value.trim().toLowerCase();
+        const shown = q ? items.filter(i =>
+            [i.itemNumber, i.description, i.businessUnit, i.itemStatusName, i.usedInProducts]
+                .some(v => v && v.toLowerCase().includes(q))) : items;
+        rowsEl.replaceChildren(...shown.map(i => {
+            const tr = document.createElement('tr');
+            tr.append(
+                cell(fmt(i.id), 'num'), cell(fmt(i.itemNumber)), cell(fmt(i.description)), cell(fmt(i.revision)),
+                cell(fmt(i.businessUnit)), cell(yesNo(i.isProduct)), cell(fmt(i.structureRole)),
+                cell(list(i.odmName)), cell(list(i.odmActive, yesNo)), cell(fmt(i.availabilityRisk)),
+                cell(fmt(i.usedInProducts)), cell(fmt(i.productFamiliesImpacted), 'num'), cell(fmt(i.itemStatusName)));
+            return tr;
+        }));
+        statusEl.textContent = `${shown.length} of ${items.length} items`;
+    }
+
+    fetch('/api/items', { headers: { Accept: 'application/json' } })
+        .then(async res => {
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(body.detail || `Request failed (${res.status})`);
+            return body;
+        })
+        .then(body => { items = body.objects || []; render(); })
+        .catch(err => { statusEl.textContent = err.message; statusEl.className = 'error'; });
+
+    filterEl.addEventListener('input', render);
+</script>
+</body>
+</html>

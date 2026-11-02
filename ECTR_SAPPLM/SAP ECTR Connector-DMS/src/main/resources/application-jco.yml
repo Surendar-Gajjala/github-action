@@ -1,0 +1,19 @@
+# Profile "jco": real SAP system via SAP JCo.
+# Build with "mvnw -Pjco package" and start with "--spring.profiles.active=jco".
+# ALL connection values come from environment variables; never commit real values.
+
+sap:
+  jco:
+    destination-name: ECTR_DMS
+    ashost: ${SAP_ASHOST}
+    sysnr: ${SAP_SYSNR:00}
+    client: ${SAP_CLIENT}
+    user: ${SAP_USER}            # technical RFC user with DMS authorizations (see docs/04-jco-setup.md)
+    password: ${SAP_PASSWORD}
+    language: ${SAP_LANG:EN}
+    pool-capacity: 3
+    peak-limit: 10               # >= app.sap.worker-threads
+
+app:
+  sap:
+    call-timeout: ${SAP_CALL_TIMEOUT:60s}

@@ -1,0 +1,378 @@
+==========================================================================================
+ INTERVIEW NOTES
+ Java OSGi Plug-in Development for ECTR UI and Metadata Validation
+ (automotive engineering client, SAP PLM / SAP ECTR)
+==========================================================================================
+
+HOW TO USE THIS FILE
+  Part 1  Project in 30 seconds (the elevator pitch)
+  Part 2  Important implementation points (what was built and why)
+  Part 3  End-to-end flow of the project (build -> runtime -> save -> drop)
+  Part 4  Design decisions you should be able to defend
+  Part 5  Likely interview questions with short answers
+  Part 6  Honest limits (what is illustrative, what needs the real ECTR SDK)
+
+LEGEND
+  [VERIFIED]      Standard Java / OSGi / Maven / bnd. Compiled and tested in this project.
+  [ILLUSTRATIVE]  Stands in for the SAP ECTR API. Must be replaced using the ECTR SDK.
+
+Be honest in the interview: the SAP ECTR calls are behind interfaces ("ports") and are
+simulated by a mock. Say this clearly. It is a strength (testable, portable), not a gap.
+
+
+==========================================================================================
+PART 1 - PROJECT IN 30 SECONDS
+==========================================================================================
+
+"SAP ECTR is the desktop client that connects CAD tools (CATIA, NX, SolidWorks, Creo...)
+ to SAP PLM. I built a Java 17 OSGi plug-in for it that:
+   1. blocks a save when mandatory engineering metadata is missing or malformed,
+   2. reacts to drag-and-drop in the Object Browser,
+   3. builds an assembly packaging plan from configurable business rules, and
+   4. shows all user messages in English or German.
+ All rules live in XML files, so business users can change them without a rebuild.
+ The ECTR API is hidden behind small interfaces, so the whole thing builds, runs and is
+ unit tested without an ECTR installation (63 tests, Felix runtime with a mock host)."
+
+
+==========================================================================================
+PART 2 - IMPORTANT IMPLEMENTATION POINTS
+==========================================================================================
+
+2.1 ARCHITECTURE: PORTS AND ADAPTERS (HEXAGONAL)
+------------------------------------------------------------------------------------------
+  * Business logic never touches the ECTR API directly. It talks to interfaces (ports)
+    defined in ectr-plugin-api:
+        ObjectPropertyReader  read object, read CAD structure, find drawings   (host -> core)
+        EctrSession           current user and language                         (host -> core)
+        UserNotifier          info / warn / error messages to the user          (host -> core)
+        SaveInterceptor       beforeSave(object) -> SaveDecision                (core -> host)
+        DropHandler           onDrop(event) -> DropOutcome                      (core -> host)
+  * The core USES the first three and PROVIDES the last two.
+  * Swapping the mock for a real ECTR adapter = write one new module (ectr-plugin-sap).
+    No change to rules, validation, packaging or tests.
+
+2.2 MAVEN MULTI-MODULE / OSGi BUNDLE LAYOUT
+------------------------------------------------------------------------------------------
+  Module                 Contents                                      Deploy to ECTR?
+  ---------------------  --------------------------------------------  ---------------
+  ectr-plugin-api        model (EngineeringObject, CadStructureNode,   yes
+                         LocalizedText, ObjectType, PropertyKey) +
+                         the ports. Exported packages.
+  ectr-plugin-core       validation, packaging engine, drag-and-drop    yes
+                         rules, i18n, DS components, default rule XML
+  ectr-plugin-mock       ILLUSTRATIVE fake ECTR host: sample data,      NO (dev only)
+                         console notifier, session, Gogo commands
+  ectr-plugin-runtime    ectr.bndrun -> target/ectr.jar                 no (dev runtime)
+                         (Felix + SCR + Gogo + the bundles)
+  config/                plm_ea.sample.xml (requirements sheet, NOT     n/a
+                         real plm_ea.xml syntax)
+  docs/01..10            step-by-step guide                             n/a
+
+  * Build tool chain: maven-compiler-plugin (release 17) -> bnd-maven-plugin writes
+    MANIFEST.MF (Bundle-SymbolicName, Import/Export-Package, DS XML, Metatype XML)
+    -> bnd-export-maven-plugin resolves ectr.bndrun into an executable ectr.jar.
+  * Only the api bundle exports packages. Core packages stay private (encapsulation).
+
+2.3 OSGi FUNDAMENTALS USED
+------------------------------------------------------------------------------------------
+  * Bundle = JAR + OSGi manifest. Lifecycle: INSTALLED -> RESOLVED -> STARTING -> ACTIVE
+    -> STOPPING -> UNINSTALLED.
+  * Declarative Services (@Component, @Reference, @Activate) instead of BundleActivator:
+    no manual service tracking, components activate only when all references exist.
+  * Constructor injection (@Activate constructor with @Reference parameters): fields are
+    final, objects are immutable and easy to unit test with plain "new".
+  * Configuration Admin + Metatype (@ObjectClassDefinition / @Designate) for settings:
+        com.example.ectr.plugin.rules        validationRulesFile, packagingRulesFile
+        com.example.ectr.plugin.validation   blockOnViolation (default true)
+        com.example.ectr.plugin.mock.session userId, language            (mock only)
+    A config change re-creates the component -> rules are reloaded without a restart.
+  * Diagnostics: lb (bundles), scr:list / scr:info (component state, unsatisfied refs).
+
+2.4 COMPONENT WIRING (who is injected into whom)
+------------------------------------------------------------------------------------------
+     RuleRepository  (only Config; loads validation-rules.xml + packaging-rules.xml)
+         |
+         +--> ValidationSaveInterceptor  <-- EctrSession, UserNotifier
+         |       (service SaveInterceptor)
+         |
+         +--> ObjectBrowserDropHandler   <-- ObjectPropertyReader, EctrSession, UserNotifier
+                 (service DropHandler)
+
+     Mock side:  MockObjectRepository -> ObjectPropertyReader
+                 MockEctrSession      -> EctrSession
+                 ConsoleNotifier      -> UserNotifier
+                 EctrShellCommands    = fake ECTR client; calls ALL SaveInterceptor and
+                                        DropHandler services (cardinality MULTIPLE)
+
+  core never imports a mock class; the mock never imports a core class.
+
+2.5 READING ENGINEERING OBJECT PROPERTIES
+------------------------------------------------------------------------------------------
+  * ObjectPropertyReader.read(id) -> Optional<EngineeringObject>  (empty = not found)
+  * ObjectPropertyReader.structure(id) -> CadStructureNode tree (children + quantity)
+  * ObjectPropertyReader.findDrawingsFor(id) -> drawing ids
+  * Properties use LOGICAL keys (PropertyKey: MATERIAL_GROUP, MATERIAL, WEIGHT_KG,
+    REVISION, REFERENCED_OBJECT ...). The real adapter maps SAP/CAD attribute names
+    onto these keys -> rules stay independent of SAP field names.
+  * Descriptions are LocalizedText (language -> text) for multilingual descriptors.
+  * Real system: implemented with the ECTR SDK / PlmConnector API of the customer's
+    exact ECTR release. [ILLUSTRATIVE until then]
+
+2.6 MANDATORY-FIELD VALIDATION BEFORE SAVE
+------------------------------------------------------------------------------------------
+  * Rules per object type in validation-rules.xml (our own format, not an SAP file):
+        <mandatory property="KEY"/>                   present and not blank
+        <pattern property="KEY" regex=".." example=".."/>  whole value must match
+        <description-languages required="en,de"/>     description needed per language
+    PART:     MATERIAL_GROUP, MATERIAL, WEIGHT_KG (\d{1,6}(\.\d{1,3})?),
+              REVISION ([A-Z]{1,2}), descriptions en+de
+    ASSEMBLY: REVISION, descriptions en+de
+    DRAWING:  REFERENCED_OBJECT, REVISION, description en
+    FOLDER:   no rules
+  * Classes: ValidationRule (interface) -> MandatoryFieldRule, PatternRule,
+    RequiredLanguagesRule; RuleSet (rules per type); RuleSetLoader (XML -> RuleSet);
+    MetadataValidator (runs rules, collects ALL violations, not just the first);
+    ValidationResult / Violation (rule id + localizable message).
+  * ValidationSaveInterceptor.beforeSave():
+        valid           -> SaveDecision.allow()
+        violations      -> blockOnViolation=true  : notifier.error + SaveDecision.reject
+                           blockOnViolation=false : notifier.warn  + allow (roll-out mode)
+        RuntimeException-> FAIL CLOSED: reject save, show incident reference,
+                           log full stack trace with the same reference.
+
+2.7 DRAG-AND-DROP IN THE OBJECT BROWSER
+------------------------------------------------------------------------------------------
+  * The host converts its native drag data into our DropEvent
+    (sourceIds, targetId, action COPY/MOVE/LINK). [conversion is ILLUSTRATIVE]
+  * DragDropController.handle() business rules:
+        target unknown / source unknown  -> reject
+        target FOLDER   -> only ASSEMBLY sources allowed; validate the whole structure;
+                           if all valid -> build a packaging plan per assembly
+        target ASSEMBLY -> reject cycles (target inside the source's structure, or
+                           source == target); validate sources -> accept link
+        target PART / DRAWING -> always reject
+  * ObjectBrowserDropHandler wraps it: localizes messages, info/warn to the user,
+    returns DropOutcome; any crash -> rejected with incident reference.
+
+2.8 ASSEMBLY PACKAGING RULES
+------------------------------------------------------------------------------------------
+  * PackagingRuleEngine.plan(rootId):
+        1. read CAD structure, collect leaf components with multiplied quantities
+           (parent qty x child qty) and related drawings
+        2. run rules sorted by PHASE: GROUP -> ENRICH -> SPLIT (stable sort, so rules
+           in the same phase keep their XML order)
+        3. anything not placed -> package "UNASSIGNED"
+        4. return PackagingPlan (package name -> object ids, plus warnings)
+  * Rules (packaging-rules.xml):
+        group-by-material-group     GROUP   one package per MATERIAL_GROUP ("MG-<group>")
+        include-drawings            ENRICH  drawing joins the package of its object
+        max-components-per-package  SPLIT   split packages larger than max="3"
+  * Add a new rule = implement PackagingRule (phase() + apply(context)) and register
+    its id in PackagingRulesLoader. Open/closed principle.
+
+2.9 XML CONFIGURATION
+------------------------------------------------------------------------------------------
+  * Two kinds of XML, keep them separate in the interview:
+      a) OUR rule files (validation-rules.xml, packaging-rules.xml): bundled default,
+         override via Config Admin path, no rebuild needed.
+      b) SAP ECTR configuration (plm_ea.xml and other ECTR customizing files) for
+         layouts, columns, menus and UI descriptors. Exact keys come from the SAP
+         ECTR documentation for the release. config/plm_ea.sample.xml is only a
+         requirements sheet, not real syntax. Never invent plm_ea.xml keys.
+  * Secure XML parsing (SecureXml): DTDs / external entities disabled -> prevents XXE.
+  * Broken rule file -> RuleConfigurationException -> RuleRepository activation fails ON
+    PURPOSE -> dependants stay unsatisfied (visible in scr:info) instead of running
+    with half the rules.
+
+2.10 EXCEPTIONS, LOGGING, MULTILINGUAL MESSAGES
+------------------------------------------------------------------------------------------
+  * Logging with System.Logger (JDK, no extra dependency); host routes it to its log.
+  * Log levels: DEBUG pass, INFO violations / drop result, ERROR crash + stack trace.
+  * Users never see stack traces: they see a friendly message + incident reference.
+  * i18n: messages.properties (en) and messages_de.properties (de). Business code
+    returns LocalizableMessage (key + args), translation happens at the UI edge
+    using the session language (Messages class). Missing locale -> safe fallback.
+  * Same validation result can be shown in any language -> good for global teams.
+
+2.11 TESTING AND DEPLOYMENT
+------------------------------------------------------------------------------------------
+  * JUnit 5 unit tests (63 tests): ValidationRulesTest, RuleSetLoaderTest,
+    PackagingRuleEngineTest, DragDropControllerTest, ValidationSaveInterceptorTest,
+    MessagesTest, MockObjectRepositoryTest. Shared TestFixtures.
+  * Components are plain classes (constructor injection) -> tested with "new", no
+    OSGi container needed.
+  * Integration: java -jar ectr.jar -> Felix runtime; check lb (11 bundles Active),
+    scr:list (7 components SATISFIED), then ectr:demo.
+  * Build:  .\mvnw.cmd verify    (Maven wrapper, JDK 17)
+  * Deploy to real ECTR: api + core + new sap adapter bundle into the ECTR plug-in /
+    OSGi location defined by the ECTR SDK. NEVER deploy the mock bundle.
+
+
+==========================================================================================
+PART 3 - FLOW OF THE PROJECT
+==========================================================================================
+
+3.1 DEVELOPMENT FLOW (how the project was built, in order)
+------------------------------------------------------------------------------------------
+  1. Understand ECTR's place: CAD tool <-> ECTR desktop client <-> SAP PLM backend
+     (material master, BOM, DIS documents, change management).
+  2. Define the model and ports (ectr-plugin-api) - the contract with the host.
+  3. Write validation rules + XML loader + validator, unit test them.
+  4. Write packaging engine + rules + XML loader, unit test them.
+  5. Write drag-and-drop controller using validator + packaging engine, unit test.
+  6. Add i18n (en/de) and user-friendly error handling.
+  7. Wrap in OSGi DS components with Config Admin settings.
+  8. Build a mock ECTR host + Gogo commands to simulate save and drop.
+  9. Assemble a Felix runtime (bndrun -> ectr.jar) and run end-to-end.
+ 10. Next phase: replace the mock with a real ECTR adapter using the SDK.
+
+3.2 BUILD FLOW
+------------------------------------------------------------------------------------------
+   .java --(javac 17)--> .class --(bnd-maven-plugin)--> bundle JAR + MANIFEST.MF
+        + OSGI-INF/*.xml (DS + Metatype) --(surefire)--> unit tests
+        --(bnd-export)--> ectr-plugin-runtime/target/ectr.jar
+
+3.3 RUNTIME START-UP FLOW
+------------------------------------------------------------------------------------------
+   java -jar ectr.jar
+     -> Felix framework starts, installs and resolves 11 bundles
+     -> SCR (Declarative Services) reads component descriptors
+     -> RuleRepository activates first (no references) and loads both rule XML files
+     -> mock services register: ObjectPropertyReader, EctrSession, UserNotifier
+     -> ValidationSaveInterceptor and ObjectBrowserDropHandler become SATISFIED
+     -> EctrShellCommands binds to all interceptors/handlers -> g! prompt ready
+
+3.4 SAVE FLOW  (example: ectr:save PRT-001)
+------------------------------------------------------------------------------------------
+   User clicks Save (simulated by ectr:save)
+     -> host reads PRT-001 via ObjectPropertyReader
+     -> host calls every SaveInterceptor.beforeSave(object)
+     -> ValidationSaveInterceptor -> RuleRepository.validator().validate(object)
+          -> rules for type PART run: mandatory / pattern / languages
+          -> violations: WEIGHT_KG missing, REVISION wrong format, no German text
+     -> messages translated into session language (en or de)
+     -> blockOnViolation=true -> notifier.error(list) + SaveDecision.reject
+     -> host does NOT save; user fixes the fields and saves again -> allow()
+
+3.5 DRAG-AND-DROP + PACKAGING FLOW  (example: ectr:drop FLD-PACK ASM-100)
+------------------------------------------------------------------------------------------
+   User drags assembly ASM-100 onto packaging folder FLD-PACK
+     -> host builds DropEvent(sources=[ASM-100], target=FLD-PACK, action=COPY)
+     -> DropHandler.onDrop -> DragDropController.handle
+     -> target is FOLDER -> sources must be ASSEMBLY -> OK
+     -> validate every object in ASM-100's CAD structure
+          any invalid -> reject with per-object violations
+     -> all valid -> PackagingRuleEngine.plan(ASM-100)
+          collect components + quantities + drawings
+          GROUP by material group -> ENRICH with drawings -> SPLIT if > 3
+          leftovers -> UNASSIGNED
+     -> "Packaging plan created for ASM-100 with N packages" + package lines
+     -> notifier.info, DropOutcome(accepted=true)
+
+   Second case: ectr:drop ASM-200 PRT-002,PRT-001 LINK
+     -> target ASSEMBLY -> cycle check -> validate sources -> accept or reject
+
+3.6 ERROR FLOW
+------------------------------------------------------------------------------------------
+   any RuntimeException inside save/drop
+     -> generate incident reference
+     -> LOG ERROR with reference + stack trace
+     -> user sees "internal error, reference XXXX" in their language
+     -> save is BLOCKED / drop REJECTED (fail closed)
+
+3.7 PRODUCTION FLOW (target state with real ECTR)
+------------------------------------------------------------------------------------------
+   ECTR client (real hooks) -> ectr-plugin-sap adapter -> ports -> ectr-plugin-core
+   ectr-plugin-sap implements ObjectPropertyReader / EctrSession / UserNotifier with the
+   ECTR SDK / PlmConnector API and calls SaveInterceptor / DropHandler from the real
+   before-save and Object Browser drop hooks.
+
+
+==========================================================================================
+PART 4 - DESIGN DECISIONS TO DEFEND
+==========================================================================================
+  * Ports & adapters      -> testable without ECTR, SDK version changes touch one module.
+  * Declarative Services  -> less boilerplate, dynamic, correct start order for free.
+  * Constructor injection -> immutable, unit-testable components.
+  * Rules in XML          -> business changes without redeploying code.
+  * Fail closed on errors -> never save unchecked data into PLM.
+  * Collect all violations-> user fixes everything in one round, not one by one.
+  * Warning mode switch   -> soft roll-out: warn first, block later.
+  * Logical property keys -> rules independent of SAP/CAD attribute names.
+  * Phased packaging      -> predictable rule order; new rules plug in easily.
+  * Translate at the edge -> one result, any language; core has no UI strings.
+  * Secure XML parsing    -> no XXE from a tampered rule file.
+  * Broken config = component unsatisfied -> visible, never "half working".
+
+
+==========================================================================================
+PART 5 - LIKELY INTERVIEW QUESTIONS (SHORT ANSWERS)
+==========================================================================================
+Q: What is SAP ECTR?
+A: SAP Engineering Control Center: a desktop integration platform between authoring
+   tools (CAD/ECAD/Office) and SAP PLM. It manages documents (DIS), materials, BOMs and
+   versions in SAP, and is Java based and extensible.
+
+Q: Why OSGi?
+A: Modularity with enforced boundaries (Import/Export-Package), independent bundle
+   lifecycle, service registry for loose coupling, dynamic updates. ECTR's Java
+   client supports plug-in extension.
+
+Q: Bundle vs component vs service?
+A: Bundle = deployable JAR with OSGi manifest. Component = DS-managed object inside a
+   bundle. Service = interface registered in the service registry that other
+   components can reference.
+
+Q: Your component is not starting. How do you debug?
+A: lb -> is the bundle ACTIVE/RESOLVED? If not, check missing Import-Package.
+   scr:list / scr:info -> which @Reference is unsatisfied, or did activate throw?
+   Check the log (e.g. RuleConfigurationException for a broken XML).
+   Check config PID values and file paths.
+
+Q: How do you validate before save?
+A: SaveInterceptor called from the host's before-save hook; rules from XML per object
+   type; all violations collected; localized message; reject or warn based on config.
+
+Q: What if validation itself throws?
+A: Fail closed: block save, log stack trace with incident reference, show the
+   reference to the user so support can find the log entry.
+
+Q: How do you prevent invalid drag-and-drop?
+A: Target type rules (folder only accepts assemblies, part/drawing never), cycle
+   detection for assembly links, structure validation before accepting.
+
+Q: How does packaging work?
+A: Read CAD structure -> components with multiplied quantities + drawings -> run rules
+   by phase GROUP/ENRICH/SPLIT -> leftovers to UNASSIGNED -> plan with warnings.
+
+Q: How do you support multiple languages?
+A: LocalizedText for descriptions + a validation rule requiring languages; UI
+   messages from ResourceBundles (en, de), selected by session language.
+
+Q: What is plm_ea.xml?
+A: An ECTR configuration file used for customizing (e.g. layouts/UI behavior). I use
+   only keys documented by SAP for the customer's release; I did not invent keys.
+
+Q: How did you test?
+A: JUnit 5 unit tests for rules, loaders, engine, controller, interceptor, messages;
+   end-to-end in a Felix runtime with a mock host and Gogo commands.
+
+Q: How do you move this to a real ECTR system?
+A: Get the ECTR SDK docs for the exact release, create ectr-plugin-sap implementing
+   the three host ports and calling the two plug-in ports from real hooks, deploy
+   api + core + sap, leave out the mock, and run the same tests plus UAT.
+
+
+==========================================================================================
+PART 6 - HONEST LIMITS
+==========================================================================================
+  * ECTR package names, hook/event names and plm_ea.xml keys are NOT in this code on
+    purpose; they must come from the customer's ECTR SDK / SAP documentation.
+  * Everything marked ILLUSTRATIVE (ports' host side, mock bundle, plm_ea.sample.xml)
+    is a stand-in. Everything else (Java, OSGi DS, bnd, Felix, JUnit) is verified by
+    the build: mvnw clean verify -> 63 tests, 0 failures.
+
+==========================================================================================
+ More detail: README.md, implemation.txt, docs/01..10
+==========================================================================================

@@ -1,0 +1,404 @@
+===============================================================================
+ TOTAL FLOW: TWO SAP PLM INTEGRATION ARCHITECTURES, ONE DEMO
+===============================================================================
+
+ Project : sap-plm-integration-demo
+ Pieces  : backend/   ONE Spring Boot 3.3 app (Java 17), code split in two:
+                        com.example.plmdemo.cad   CAD -> SAP ECTR -> SAP backend
+                        com.example.plmdemo.erp   External PLM -> Integration layer -> SAP ERP/S/4HANA
+                        com.example.plmdemo.common  shared (correlation ID, errors, info)
+           frontend/  React 18 + Vite: one page, tabs "CAD to PLM" (#cad-to-plm) and
+                      "ERP to PLM" (#erp-to-plm), each with a data-flow view
+ Status  : LEARNING DEMO. CAD JSON format, ECTR steps, PLM store and both SAP
+           sides are MOCKS. Nothing reaches a real CAD, ECTR, PLM or SAP system.
+           Keys like CAD/4700000001/000/00, MOCK-CS-000001, MOCK-BOM-000001 are
+           NOT SAP records.
+
+
+-------------------------------------------------------------------------------
+ 1. THE TWO FLOWS SIDE BY SIDE
+-------------------------------------------------------------------------------
+
+ A) CAD -> SAP ECTR -> SAP BACKEND                (backend package: cad)
+
+   CAD export (JSON)
+        |  POST /api/v1/ectr/sessions                 1. createDocuments
+        v
+   +-------------------------------+
+   | SAP ECTR (SIMULATED)          |  real ECTR = desktop client + client-side
+   |  steps run in fixed order     |  ECTR Connector, NOT a REST API
+   +-------------------------------+
+        |  POST .../{id}/checkin                      2. save(SAVECHECKIN)
+        |  POST .../{id}/materials                    3. materialCreate
+        |  POST .../{id}/bom                          4. cdeskBomWizard
+        v
+   +---------------------------------------------------------------+
+   | SAP ECC / S/4HANA, PLM functions (MOCK: MockSapPlmBackend)    |
+   |  Document Info Records (DIR)   CAD/4700000001/000/00 ...      |
+   |  Originals on content repo     MOCK-CS-000001 ...             |
+   |  Document structure (BoD)      assembly DIR -> 3 child DIRs   |
+   |  Materials + object links      MOTOR-100, SHAFT-101, BEARING  |
+   |  Material BOM                  0010 SHAFT-101 1, 0020 BEARING 2|
+   +---------------------------------------------------------------+
+   No external PLM. ECTR writes straight into SAP's own PLM functions.
+   The BOM is NOT released for production; that is SAP's change/status process.
+
+
+ B) EXTERNAL PLM -> INTEGRATION LAYER -> SAP ERP/S/4HANA   (backend package: erp)
+
+   CAD data (JSON)
+        |  POST /api/v1/plm/imports        (stands in for the PLM's own CAD integration)
+        v
+   +-------------------------------+
+   | External PLM (MOCK)           |  owns engineering data + release decision
+   |  BOM saved as IN_WORK         |
+   +-------------------------------+
+        |  POST /api/v1/plm/boms/{material}/{rev}/release?plant=1000
+        v
+   +-------------------------------+
+   | External PLM: RELEASED        |
+   +-------------------------------+
+        |  POST /api/v1/bom-transfers   (Idempotency-Key header)
+        v
+   +-------------------------------------------------------------+
+   | Integration layer                                           |
+   |  duplicate check -> read BOM from PLM -> validate (RELEASED,|
+   |  qty > 0, ...) -> map to target contract -> SapBomGateway   |
+   |  (retry on transient errors) -> save transfer record        |
+   +-------------------------------------------------------------+
+        |
+        v
+   SAP gateway = MOCK -> targetReference MOCK-BOM-000001
+        |  GET /api/v1/bom-transfers/{transferId}
+        v
+   Transfer status (SUCCEEDED / FAILED_* / VALIDATION_FAILED)
+
+
+ KEY DIFFERENCES
+
+   Question                         A) CAD/ECTR               B) External PLM/ERP
+   -------------------------------  ------------------------  ------------------------
+   Where does engineering data      inside SAP (DIR, BoD,     in the external PLM
+   live?                            BOM)
+   Who decides "released"?          SAP change/status process the external PLM
+   Integration point                designer's desktop        server to server
+   What talks to SAP?               ECTR client (RFC where    integration layer via
+                                    configured)               the SAP interface your
+                                                              landscape supports
+   Demo endpoints                   /api/v1/ectr/sessions...  /api/v1/plm/...,
+                                                              /api/v1/bom-transfers
+
+ SHARED CAD RULES (cad/model/CadStructureMapper, used by both flows)
+   - A CAD assembly lists INSTANCES; a BOM lists ITEMS with quantities.
+     2 placed BEARING-201 instances become 1 BOM item with quantity 2.
+   - excludeFromBom=true (e.g. skeleton/reference geometry):
+       A) still gets a DIR and stays in the document structure (BoD), but gets
+          no material and no BOM item
+       B) not part of the PLM BOM
+   - Missing quantity = 1, missing unit = EA.
+
+
+-------------------------------------------------------------------------------
+ 2. HOW TO RUN
+-------------------------------------------------------------------------------
+
+ Requirements: Java 17+, Node.js 18+ (no Maven install needed).
+
+ Terminal 1, backend (port 8080):
+     cd sap-plm-integration-demo\backend
+     mvnw.cmd spring-boot:run            (Linux/macOS: ./mvnw spring-boot:run)
+
+ Terminal 2, React page (port 5173):
+     cd sap-plm-integration-demo\frontend
+     npm install
+     npm run dev
+
+ Open http://localhost:5173 and pick a tab (direct links: #cad-to-plm, #erp-to-plm).
+ Each tab starts with a DATA-FLOW VIEW: systems as boxes, arrows labelled with
+ the data passing between them. They fill with live values and turn green/red
+ as you run the steps below.
+
+ The React dev server forwards /api/* to http://localhost:8080 (vite.config.js).
+ Restarting the backend clears all in-memory data (both mock SAP sides, PLM, sessions).
+
+ Tests: mvnw.cmd test -> 42 tests
+   cad/  CadStructureMapperTest, EctrFlowTest (whole ECTR path over HTTP)
+   erp/  validator, mapper, transfer service, BomTransferControllerTest,
+         PlmImportFlowTest (whole PLM path over HTTP), DemoPageTest
+
+
+-------------------------------------------------------------------------------
+ 3. CLICK PATH, TAB "CAD to PLM" (CAD -> SAP ECTR -> SAP backend)
+-------------------------------------------------------------------------------
+
+  1. The sample "MOTOR-100 rev D" CAD JSON is loaded. The CAD structure table
+     shows 4 instances; SKEL-100 is struck out (not in BOM).
+  2. "Start ECTR session: create documents ->"
+       4 DIRs (assembly + SHAFT-101 + BEARING-201 + SKEL-100), status CREATED,
+       CAD file renamed to an SAP-controlled file name.
+  3. "Check in ->"
+       Every DIR is CHECKED_IN with an original id (MOCK-CS-...).
+       Document structure (BoD): 3 children, BEARING-201 qty 2, SKEL-100 marked
+       "document only".
+  4. "Create materials ->"
+       Materials MOTOR-100, SHAFT-101, BEARING-201, each linked to its DIR.
+       SKEL-100 gets no material.
+  5. "Maintain BOM ->"
+       Material BOM MOTOR-100 / plant 1000: 0010 SHAFT-101 1 EA, 0020 BEARING-201 2 EA.
+       Note: not released for production.
+  6. "What ECTR did" lists each step with the ECTR Connector call it stands for.
+  7. Start a second session with the same JSON: DIRs show "reused", materials
+     "already existed", BOM "updated".
+  8. Calling a step out of order (e.g. via the API) gives 409 ECTR_STEP_ORDER.
+
+
+-------------------------------------------------------------------------------
+ 4. CLICK PATH, TAB "ERP to PLM" (External PLM -> Integration -> SAP ERP)
+-------------------------------------------------------------------------------
+
+  1. The same sample CAD JSON is loaded.
+  2. "Load into external PLM ->"
+       PLM BOM MOTOR-100 rev D: SHAFT-101 x1, BEARING-201 x2, state IN_WORK.
+  3. (Optional) "Transfer ... to SAP" now -> HTTP 422 "only RELEASED BOMs can
+     be transferred".
+  4. "Release in PLM" -> RELEASED.
+  5. "Transfer MOTOR-100 rev D to SAP" -> HTTP 201, SUCCEEDED, MOCK-BOM-000001.
+  6. "Send again (same key)" -> HTTP 200, duplicate: SAP not called again.
+  7. "Check status" -> the stored transfer record.
+  8. "Load into external PLM" again -> HTTP 409 PLM_CONFLICT (rev D is
+     released). "Bump revision" (D -> E) and run again.
+  9. "Broken export (errors)" -> HTTP 422 CAD_VALIDATION_FAILED, all problems
+     listed (works the same in the CAD tab).
+
+ The "API calls" panel at the bottom lists every request from both tabs
+ (tagged CAD or ERP). Click a row to see the request and response JSON.
+
+
+-------------------------------------------------------------------------------
+ 5. SAMPLE CAD JSON (frontend/public/samples/motor-100-revD.cad.json)
+-------------------------------------------------------------------------------
+
+ The DEMO's own simple format, not an SAP ECTR or CAD vendor format.
+
+ {
+   "source": {
+     "cadSystem": "DEMO-CAD",
+     "fileName": "motor-100.asm",
+     "exportedAt": "2026-10-22T09:00:00Z",
+     "exportedBy": "designer01"
+   },
+   "assembly": {
+     "partNumber": "MOTOR-100",
+     "revision": "D",
+     "plant": "1000",
+     "changeNumber": "ECN-5001",
+     "description": "Electric motor assembly",
+     "attributes": { "massKg": 4.2, "material": "Steel / Aluminium", "designer": "designer01" },
+     "components": [
+       { "instanceId": "i-001", "partNumber": "SHAFT-101",   "revision": "A",
+         "description": "Drive shaft", "quantity": 1, "unit": "EA", "fileName": "shaft-101.prt" },
+       { "instanceId": "i-002", "partNumber": "BEARING-201", "revision": "C",
+         "description": "Ball bearing 6204 (front)", "quantity": 1, "unit": "EA", "fileName": "bearing-201.prt" },
+       { "instanceId": "i-003", "partNumber": "BEARING-201", "revision": "C",
+         "description": "Ball bearing 6204 (rear)", "quantity": 1, "unit": "EA", "fileName": "bearing-201.prt" },
+       { "instanceId": "i-004", "partNumber": "SKEL-100", "revision": "A",
+         "description": "Layout skeleton (reference geometry)", "quantity": 1, "unit": "EA",
+         "fileName": "skel-100.prt", "excludeFromBom": true }
+     ]
+   }
+ }
+
+ Request validation (HTTP 400 INVALID_INPUT):
+   source.cadSystem required; assembly.partNumber required (letters/digits/-/_);
+   assembly.revision 1-2 upper-case letters/digits; assembly.plant exactly 4
+   upper-case letters/digits; assembly.components 1..500 entries;
+   component.partNumber required.
+
+ CAD rules (HTTP 422 CAD_VALIDATION_FAILED, both flows):
+   quantity > 0; same unit for every instance of a part; unique instanceId;
+   a component must not be the assembly itself; at least one BOM-relevant
+   component. frontend/public/samples/motor-100-invalid.cad.json breaks these
+   on purpose.
+
+
+-------------------------------------------------------------------------------
+ 6. API CALLS, FLOW A (cad): real responses from the demo, shortened
+-------------------------------------------------------------------------------
+
+ Real SAP ECTR is NOT called like this. These endpoints simulate its steps.
+
+ Step 1: createDocuments(files, metadata)
+   POST /api/v1/ectr/sessions          Body: the CAD JSON         -> 201
+   {
+     "sessionId": "…", "mode": "MOCK", "status": "DOCUMENTS_CREATED", "nextStep": "checkin",
+     "documents": [
+       { "dirKey": "CAD/4700000001/000/00", "partNumber": "MOTOR-100", "cadFileName": "motor-100.asm",
+         "sapFileName": "4700000001_000_00.asm", "status": "CREATED", "assembly": true, ... },
+       { "dirKey": "CAD/4700000002/000/00", "partNumber": "SHAFT-101", ... },
+       { "dirKey": "CAD/4700000003/000/00", "partNumber": "BEARING-201", ... },
+       { "dirKey": "CAD/4700000004/000/00", "partNumber": "SKEL-100", "bomRelevant": false, ... }
+     ],
+     "documentStructure": [], "materials": [], "bom": null,
+     "steps": [ { "step": "1. Create documents", "connectorCall": "createDocuments(files, metadata)",
+                  "messages": [ "DIR CAD/4700000001/000/00 created for MOTOR-100 (motor-100.asm -> 4700000001_000_00.asm)", ... ] } ]
+   }
+
+ Step 2: save(loadedParts, parts, SaveOption.SAVECHECKIN)
+   POST /api/v1/ectr/sessions/{id}/checkin                        -> 200
+   documents[*].status = "CHECKED_IN", originalId = "MOCK-CS-000001" ...
+   "documentStructure": [
+     { "childDirKey": "CAD/4700000002/000/00", "partNumber": "SHAFT-101",   "quantity": 1, "bomRelevant": true },
+     { "childDirKey": "CAD/4700000003/000/00", "partNumber": "BEARING-201", "quantity": 2, "bomRelevant": true },
+     { "childDirKey": "CAD/4700000004/000/00", "partNumber": "SKEL-100",    "quantity": 1, "bomRelevant": false } ]
+
+ Step 3: materialCreate(material, part)
+   POST /api/v1/ectr/sessions/{id}/materials                      -> 200
+   "materials": [
+     { "materialNumber": "MOTOR-100",   "description": "Electric motor assembly", "linkedDirKey": "CAD/4700000001/000/00", "created": true },
+     { "materialNumber": "SHAFT-101",   "description": "Drive shaft",             "linkedDirKey": "CAD/4700000002/000/00", "created": true },
+     { "materialNumber": "BEARING-201", "description": "Ball bearing 6204 (front)","linkedDirKey": "CAD/4700000003/000/00", "created": true } ]
+
+ Step 4: cdeskBomWizard(part, materialHead, items)
+   POST /api/v1/ectr/sessions/{id}/bom                            -> 200
+   "status": "BOM_MAINTAINED", "nextStep": null,
+   "bom": { "materialNumber": "MOTOR-100", "plant": "1000", "changeNumber": "ECN-5001", "created": true,
+            "items": [ { "itemNumber": "0010", "componentMaterial": "SHAFT-101",   "quantity": 1, "unit": "EA" },
+                       { "itemNumber": "0020", "componentMaterial": "BEARING-201", "quantity": 2, "unit": "EA" } ],
+            "note": "The BOM exists in SAP but is not released for production; release follows the change-number / status process." }
+
+ Read the session at any time:
+   GET /api/v1/ectr/sessions/{id}
+
+
+-------------------------------------------------------------------------------
+ 7. API CALLS, FLOW B (erp): real responses from the demo, shortened
+-------------------------------------------------------------------------------
+
+ These are the demo service's own endpoints, NOT SAP endpoints.
+
+ Step 1: CAD data into the external PLM
+   POST /api/v1/plm/imports            Body: the CAD JSON         -> 201 (200 if IN_WORK rev replaced)
+   {
+     "bom": { "sourceSystem": "CAD:DEMO-CAD", "materialNumber": "MOTOR-100", "revision": "D", "plant": "1000",
+              "releaseState": "IN_WORK", "changeNumber": "ECN-5001",
+              "items": [ { "componentNumber": "SHAFT-101",   "quantity": 1, "unit": "EA" },
+                         { "componentNumber": "BEARING-201", "quantity": 2, "unit": "EA" } ] },
+     "notes": [ "i-004 (SKEL-100) excluded from BOM (excludeFromBom=true)",
+                "BEARING-201: 2 CAD instances (i-002, i-003) -> one BOM item, quantity 2 EA" ],
+     "cadInstances": 4, "excludedInstances": 1, "replacedExisting": false
+   }
+
+ Step 2: Release in PLM
+   POST /api/v1/plm/boms/MOTOR-100/D/release?plant=1000          -> 200, "releaseState": "RELEASED"
+   GET  /api/v1/plm/boms/MOTOR-100/D?plant=1000                  -> current BOM
+
+ Step 3: Integration layer -> SAP (mock gateway)
+   POST /api/v1/bom-transfers
+   Headers: Idempotency-Key: react-mgx1abc   (X-Correlation-ID optional)
+   Body:    { "materialNumber": "MOTOR-100", "revision": "D", "plant": "1000" }      -> 201
+   { "transferId": "8fc26719-…", "status": "SUCCEEDED", "duplicate": false, "gatewayMode": "MOCK",
+     "targetReference": "MOCK-BOM-000001", "attempts": 1,
+     "messages": ["[MOCK] BOM stored in memory, no SAP system was called"],
+     "idempotencyKey": "react-mgx1abc", "correlationId": "54d0031a-…", ... }
+
+ Step 4: Status
+   GET /api/v1/bom-transfers/{transferId}                         -> 200, same shape
+
+ Helper (both tabs):
+   GET /api/v1/info -> { "gatewayMode": "MOCK", "ectrBackend": "MOCK" }
+
+
+-------------------------------------------------------------------------------
+ 8. ERROR CASES (all verified against the running demo)
+-------------------------------------------------------------------------------
+
+ Case                                       Flow  HTTP  code / status
+ -----------------------------------------  ----  ----  ------------------------
+ Malformed CAD JSON / missing fields        both   400  INVALID_INPUT
+ CAD rules broken (qty 0, units, ...)       both   422  CAD_VALIDATION_FAILED
+ ECTR step out of order or repeated         A      409  ECTR_STEP_ORDER
+ Unknown ECTR session (e.g. after restart)  A      404  ECTR_SESSION_NOT_FOUND
+ Re-import of a RELEASED PLM revision       B      409  PLM_CONFLICT
+ Release of a BOM that is not IN_WORK       B      409  PLM_CONFLICT
+ Release / transfer of unknown BOM          B      404  BOM_NOT_FOUND
+ Transfer before release                    B      422  BOM_VALIDATION_FAILED
+ Same Idempotency-Key again                 B      200  duplicate: true
+ SAP temporarily down (simulated)           B      503  FAILED_TRANSIENT
+ SAP rejects data (simulated)               B      502  FAILED_PERMANENT
+ Unknown URL                                -      404  NOT_FOUND
+
+ Simulate SAP gateway failures (flow B) by starting the backend with:
+   set SAP_MOCK_FAILURE_MODE=TRANSIENT_ONCE | ALWAYS_TRANSIENT | PERMANENT
+   mvnw.cmd spring-boot:run
+
+ Every response carries X-Correlation-ID. Search the backend log for it.
+
+
+-------------------------------------------------------------------------------
+ 9. FILES
+-------------------------------------------------------------------------------
+
+ backend/src/main/java/com/example/plmdemo/
+   cad/                                   A) CAD -> SAP ECTR -> SAP backend
+     model/CadAssembly.java               internal CAD model (instances)
+     model/CadStructure.java              per-part lines: structure qty + BOM qty
+     model/CadStructureMapper.java        CAD rules, grouping (shared with erp)
+     model/CadValidationException.java
+     ectr/EctrMockService.java            the 4 simulated ECTR steps, fixed order
+     ectr/EctrSessionView.java            JSON view of a session
+     ectr/EctrSessionStatus.java, EctrStateException.java, EctrSessionNotFoundException.java
+     sapbackend/MockSapPlmBackend.java    DIRs, originals, BoD, materials, BOMs
+     api/EctrController.java              /api/v1/ectr/sessions...
+     api/dto/CadExportDto.java            CAD JSON contract + request validation
+
+   erp/                                   B) External PLM -> Integration -> SAP ERP
+     api/PlmImportController.java         POST /api/v1/plm/imports
+     api/PlmBomController.java            GET BOM, POST release
+     api/BomTransferController.java       POST/GET /api/v1/bom-transfers
+     api/dto/TransferRequestDto.java, TransferResponseDto.java
+     source/PlmBomService.java            import (IN_WORK), release
+     source/MockPlmBomSource.java         in-memory PLM (seeded MOTOR-100 B/C, MOTOR-900)
+     source/PlmBomSource.java, PlmBomStore.java, PlmConflictException.java
+     transfer/BomTransferService.java     idempotency, retry, status
+     validation/BomValidator.java         RELEASED only, quantities, duplicates
+     mapping/BomMapper.java               BOM -> target contract
+     sap/SapBomGateway.java               SAP port
+     sap/MockSapBomGateway.java           MOCK SAP (default)
+     sap/RealSapBomGatewayPlaceholder     stub; implement for your SAP interface
+     config/IntegrationProperties.java, domain/...
+
+   common/                                CorrelationIdFilter, GlobalExceptionHandler,
+                                          ErrorResponseDto, InvalidRequestException, InfoController
+
+ frontend/
+   src/App.jsx                            header, tabs (URL hash), shared API log
+   src/cad-to-plm/CadToPlmFlow.jsx        tab "CAD to PLM" + its data-flow builder
+   src/erp-to-plm/ErpToPlmFlow.jsx        tab "ERP to PLM" + its data-flow builder
+   src/components/DataFlow.jsx            data-flow view (boxes + labelled arrows)
+   src/components/shared.jsx              CAD editor/preview, stepper, error box, API log
+   src/api.js                             fetch wrapper for both flows
+   src/App.css, vite.config.js, package.json
+   public/samples/*.cad.json              sample CAD exports (valid + broken)
+
+ Also: README.md, docs/ (architecture A and B, API examples), PROMPT.md,
+       ectr-pseudocode/ (real ECTR Connector usage, illustrative).
+
+
+-------------------------------------------------------------------------------
+ 10. FROM DEMO TO REAL SYSTEMS
+-------------------------------------------------------------------------------
+
+ A) CAD path: use the SAP ECTR interface for your CAD tool (check the PAM). For a
+    tool without one, build on the ECTR Connector (client-side Java/.NET, see
+    ectr-pseudocode/ and docs/architecture-a-cad-ectr.md). The cad/ package here
+    only shows WHAT ends up in SAP, not how to call real ECTR.
+ B) ERP path: replace MockPlmBomSource with an adapter for your PLM product's
+    supported API, and implement RealSapBomGatewayPlaceholder against the
+    interface your SAP and PLM versions actually support (OData/REST, IDoc via
+    middleware, BAPI/RFC via JCo, an SAP PLM integration add-on, or a vendor
+    connector), then set SAP_MODE=real. Credentials come only from environment
+    variables or a secrets manager.
+ Until that is done and verified against your SAP system, this demo creates no
+ SAP records.
+
+===============================================================================

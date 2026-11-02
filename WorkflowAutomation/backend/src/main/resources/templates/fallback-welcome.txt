@@ -1,0 +1,11 @@
+Hi {{firstName}},
+
+Welcome to {{company}}! We are excited to have you join the {{department}} team as our new {{jobTitle}}. Your first day is {{joiningDate}}.
+
+{{reportingManager}} will be your reporting manager and will help you get settled during your first weeks. Please use the checklist below to track your onboarding progress.
+
+If you have any questions before you start, just reply to this email.
+
+We look forward to working with you!
+
+The {{company}} People Team

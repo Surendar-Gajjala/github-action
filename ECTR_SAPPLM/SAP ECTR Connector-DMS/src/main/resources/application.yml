@@ -1,0 +1,45 @@
+# Default configuration: MOCK SAP backend (no SAP system needed).
+# Real SAP: run with profile "jco" -> application-jco.yml (credentials from environment variables).
+
+server:
+  port: 8080
+
+spring:
+  application:
+    name: ectr-dms-connector
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 51MB
+  mvc:
+    problemdetails:
+      enabled: true
+
+app:
+  sap:
+    call-timeout: 30s        # how long a REST caller waits for SAP
+    worker-threads: 4        # parallel SAP calls; keep <= JCo peak limit
+    queue-capacity: 50       # waiting requests before HTTP 503
+  storage:
+    root: ./data/originals
+    allowed-types: PDF,DXF
+
+# Only used by the mock backend (ILLUSTRATIVE)
+mock:
+  sap:
+    latency: 200ms
+    document-types: DRW,CAD,DES
+    fail-communication: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-components: always
+
+logging:
+  pattern:
+    level: "%5p [%X{correlationId:-}]"

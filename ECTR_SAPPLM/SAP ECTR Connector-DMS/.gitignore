@@ -1,0 +1,13 @@
+target/
+*.class
+.idea/
+*.iml
+.vscode/
+.settings/
+.project
+.classpath
+.factorypath
+# Felix bundle cache created by "java -jar ectr.jar" when started from this folder
+felix-cache/
+# Uploaded originals written by the running service
+data/

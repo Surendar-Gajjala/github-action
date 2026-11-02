@@ -1,0 +1,30 @@
+# VERIFIED: standard bnd run descriptor.
+# Local OSGi runtime that stands in for the ECTR client during development.
+# -runbundles is (re)computed by the bnd resolver during "mvnw package"; do not edit it by hand.
+
+-runfw: org.apache.felix.framework
+-runee: JavaSE-17
+
+-runrequires: \
+	bnd.identity;id='ectr-plugin-core',\
+	bnd.identity;id='ectr-plugin-mock',\
+	bnd.identity;id='org.apache.felix.gogo.shell',\
+	bnd.identity;id='org.apache.felix.gogo.command'
+
+-resolve.effective: active
+
+# Framework properties. ECTR-specific values do not belong here.
+-runproperties: \
+	org.osgi.framework.storage.clean=onFirstInit,\
+	java.util.logging.SimpleFormatter.format='%4$s %3$s: %5$s%6$s%n'
+-runbundles: \
+	ectr-plugin-api;version='[1.0.0,1.0.1)',\
+	ectr-plugin-core;version='[1.0.0,1.0.1)',\
+	ectr-plugin-mock;version='[1.0.0,1.0.1)',\
+	org.apache.felix.gogo.command;version='[1.1.2,1.1.3)',\
+	org.apache.felix.gogo.runtime;version='[1.1.6,1.1.7)',\
+	org.apache.felix.gogo.shell;version='[1.1.4,1.1.5)',\
+	org.apache.felix.scr;version='[2.2.10,2.2.11)',\
+	org.osgi.service.component;version='[1.5.1,1.5.2)',\
+	org.osgi.util.function;version='[1.2.0,1.2.1)',\
+	org.osgi.util.promise;version='[1.3.0,1.3.1)'

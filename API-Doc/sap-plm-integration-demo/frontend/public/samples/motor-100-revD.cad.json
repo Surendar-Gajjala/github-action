@@ -1,0 +1,59 @@
+{
+  "source": {
+    "cadSystem": "DEMO-CAD",
+    "fileName": "motor-100.asm",
+    "exportedAt": "2026-10-22T09:00:00Z",
+    "exportedBy": "designer01"
+  },
+  "assembly": {
+    "partNumber": "MOTOR-100",
+    "revision": "D",
+    "plant": "1000",
+    "changeNumber": "ECN-5001",
+    "description": "Electric motor assembly",
+    "attributes": {
+      "massKg": 4.2,
+      "material": "Steel / Aluminium",
+      "designer": "designer01"
+    },
+    "components": [
+      {
+        "instanceId": "i-001",
+        "partNumber": "SHAFT-101",
+        "revision": "A",
+        "description": "Drive shaft",
+        "quantity": 1,
+        "unit": "EA",
+        "fileName": "shaft-101.prt"
+      },
+      {
+        "instanceId": "i-002",
+        "partNumber": "BEARING-201",
+        "revision": "C",
+        "description": "Ball bearing 6204 (front)",
+        "quantity": 1,
+        "unit": "EA",
+        "fileName": "bearing-201.prt"
+      },
+      {
+        "instanceId": "i-003",
+        "partNumber": "BEARING-201",
+        "revision": "C",
+        "description": "Ball bearing 6204 (rear)",
+        "quantity": 1,
+        "unit": "EA",
+        "fileName": "bearing-201.prt"
+      },
+      {
+        "instanceId": "i-004",
+        "partNumber": "SKEL-100",
+        "revision": "A",
+        "description": "Layout skeleton (reference geometry)",
+        "quantity": 1,
+        "unit": "EA",
+        "fileName": "skel-100.prt",
+        "excludeFromBom": true
+      }
+    ]
+  }
+}

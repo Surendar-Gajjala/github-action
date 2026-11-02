@@ -1,0 +1,20 @@
+{
+  "source": {
+    "cadSystem": "DEMO-CAD",
+    "fileName": "motor-100-broken.asm",
+    "exportedBy": "designer01"
+  },
+  "assembly": {
+    "partNumber": "MOTOR-100",
+    "revision": "X",
+    "plant": "1000",
+    "changeNumber": "ECN-5099",
+    "description": "Broken export for the error demo",
+    "components": [
+      { "instanceId": "i-001", "partNumber": "SHAFT-101",   "quantity": 0, "unit": "EA", "description": "quantity 0" },
+      { "instanceId": "i-002", "partNumber": "BEARING-201", "quantity": 1, "unit": "EA" },
+      { "instanceId": "i-003", "partNumber": "BEARING-201", "quantity": 1, "unit": "KG", "description": "unit differs from i-002" },
+      { "instanceId": "i-004", "partNumber": "MOTOR-100",   "quantity": 1, "unit": "EA", "description": "assembly contains itself" }
+    ]
+  }
+}

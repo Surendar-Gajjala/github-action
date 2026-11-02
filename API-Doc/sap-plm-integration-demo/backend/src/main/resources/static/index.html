@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PLM to SAP Demo</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #ffffff; --text: #1d2330; --muted: #5d6576; --border: #dde1e8;
+    --accent: #0a6ed1; --accent-text: #ffffff;
+    --ok: #1e7b45; --ok-bg: #e3f4ea; --warn: #8a5a00; --warn-bg: #fff1d6;
+    --err: #b42318; --err-bg: #fde8e7; --info: #3b4cc0; --info-bg: #e8ebfb;
+    --code-bg: #f0f2f5; --step-bg: #eef1f5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #12151b; --card: #1b2029; --text: #e6e9ef; --muted: #9aa3b2; --border: #2c3340;
+      --accent: #4c9fff; --accent-text: #0b1220;
+      --ok: #5fd28f; --ok-bg: #173325; --warn: #f2bd55; --warn-bg: #3a2c10;
+      --err: #ff8a80; --err-bg: #3d1d1b; --info: #9aa8ff; --info-bg: #23284a;
+      --code-bg: #141821; --step-bg: #232a36;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { padding: 16px; border-bottom: 1px solid var(--border); background: var(--card); }
+  header .wrap { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  h1 { font-size: 18px; margin: 0; }
+  h2 { font-size: 15px; margin: 0 0 12px; }
+  main { padding: 16px; }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  .banner { background: var(--warn-bg); color: var(--warn); border-radius: 8px; padding: 10px 12px; margin-bottom: 16px; }
+  .grid { display: grid; gap: 16px; grid-template-columns: 1fr 1fr; }
+  @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; min-width: 0; }
+  .full { grid-column: 1 / -1; }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 4px; }
+  input { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px;
+          background: var(--bg); color: var(--text); font: inherit; }
+  .fields { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+  .fields2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+  @media (max-width: 480px) { .fields, .fields2 { grid-template-columns: 1fr; } }
+  button { font: inherit; border-radius: 6px; padding: 8px 14px; cursor: pointer;
+           border: 1px solid var(--border); background: var(--card); color: var(--text); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+  button:disabled { opacity: .5; cursor: default; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .presets { margin-bottom: 12px; }
+  .presets button { font-size: 12px; padding: 5px 10px; }
+  .pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .s-ok { background: var(--ok-bg); color: var(--ok); }
+  .s-warn { background: var(--warn-bg); color: var(--warn); }
+  .s-err { background: var(--err-bg); color: var(--err); }
+  .s-info { background: var(--info-bg); color: var(--info); }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .table-scroll { overflow-x: auto; }
+  .muted { color: var(--muted); }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 10px 0; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; overflow-wrap: anywhere; }
+  pre { background: var(--code-bg); border-radius: 6px; padding: 10px; overflow-x: auto; font-size: 12px; margin: 8px 0 0; }
+  ul.msgs { margin: 6px 0 0; padding-left: 18px; }
+  .flow { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .step { background: var(--step-bg); color: var(--muted); border-radius: 8px; padding: 8px 10px; font-size: 12px; text-align: center; min-width: 96px; }
+  .step b { display: block; font-size: 13px; color: inherit; }
+  .step.done { background: var(--ok-bg); color: var(--ok); }
+  .step.fail { background: var(--err-bg); color: var(--err); }
+  .step.skip { opacity: .45; }
+  .arrow { color: var(--muted); }
+  a.link { color: var(--accent); cursor: pointer; text-decoration: underline; }
+  .empty { color: var(--muted); padding: 8px 0; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>PLM → SAP BOM Transfer</h1>
+    <span class="pill s-info" id="modeBadge">gateway: …</span>
+    <span class="muted">Architecture B learning demo</span>
+  </div>
+</header>
+
+<main>
+<div class="wrap">
+  <div class="banner">
+    <b>Demo only.</b> PLM data and the SAP gateway are in-memory <b>mocks</b>. References starting with
+    <code>MOCK-</code> are not SAP records, and this page calls the demo's own API, not an SAP endpoint.
+  </div>
+
+  <div class="grid">
+    <!-- Flow -->
+    <section class="card full">
+      <h2>Transfer flow</h2>
+      <div class="flow" id="flow">
+        <div class="step" data-step="plm"><b>1. PLM source</b>read BOM</div><span class="arrow">→</span>
+        <div class="step" data-step="validate"><b>2. Validate</b>release, qty</div><span class="arrow">→</span>
+        <div class="step" data-step="map"><b>3. Map</b>target contract</div><span class="arrow">→</span>
+        <div class="step" data-step="sap"><b>4. SAP gateway</b>submit + retry</div><span class="arrow">→</span>
+        <div class="step" data-step="status"><b>5. Status</b>record result</div>
+      </div>
+      <p class="muted" id="flowText" style="margin:10px 0 0">Send a request to see which steps run.</p>
+    </section>
+
+    <!-- Request -->
+    <section class="card">
+      <h2>Request</h2>
+      <div class="row presets">
+        <span class="muted">Presets:</span>
+        <button data-preset="MOTOR-100|B|1000">MOTOR-100 rev B ✓</button>
+        <button data-preset="MOTOR-100|C|1000">rev C (not released)</button>
+        <button data-preset="MOTOR-900|A|1000">MOTOR-900 (bad qty)</button>
+        <button data-preset="PUMP-1|A|1000">PUMP-1 (unknown)</button>
+        <button data-preset="motor 100|B|10">invalid input</button>
+      </div>
+      <form id="form" autocomplete="off">
+        <div class="fields">
+          <div><label for="material">Material number</label><input id="material" value="MOTOR-100"></div>
+          <div><label for="revision">Revision</label><input id="revision" value="B"></div>
+          <div><label for="plant">Plant</label><input id="plant" value="1000"></div>
+        </div>
+        <div class="fields2">
+          <div><label for="idemKey">Idempotency-Key</label><input id="idemKey"></div>
+          <div><label for="corrId">X-Correlation-ID (optional)</label><input id="corrId" placeholder="generated if empty"></div>
+        </div>
+        <div class="row">
+          <button type="submit" class="primary" id="sendBtn">Send transfer</button>
+          <button type="button" id="againBtn" disabled title="Re-send with the same Idempotency-Key">Send again (same key)</button>
+          <button type="button" id="newKeyBtn">New key</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Source BOM -->
+    <section class="card">
+      <h2>Source BOM in PLM <span class="muted" style="font-weight:400">(mock)</span></h2>
+      <div id="bomView" class="empty">Loading…</div>
+    </section>
+
+    <!-- Result -->
+    <section class="card full">
+      <h2>Result</h2>
+      <div id="result" class="empty">No request sent yet.</div>
+    </section>
+
+    <!-- History -->
+    <section class="card full">
+      <h2>Transfers in this session</h2>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Time</th><th>Material</th><th>HTTP</th><th>Status</th><th>Attempts</th><th>Reference</th><th>Transfer ID</th></tr></thead>
+          <tbody id="history"><tr><td colspan="7" class="empty">None yet.</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</div>
+</main>
+
+<script>
+(function () {
+  const API = '/api/v1/bom-transfers';
+  const $ = (id) => document.getElementById(id);
+  const esc = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const history = [];
+  let lastKey = null;
+
+  const newKey = () => { $('idemKey').value = 'ui-' + Date.now().toString(36); };
+  newKey();
+
+  function statusClass(status, http) {
+    if (status === 'SUCCEEDED') return 's-ok';
+    if (status === 'FAILED_TRANSIENT') return 's-warn';
+    if (status === 'IN_PROGRESS' || status === 'RECEIVED') return 's-info';
+    if (http >= 400 || (status && status.startsWith('FAILED')) || status === 'VALIDATION_FAILED') return 's-err';
+    return 's-info';
+  }
+
+  // ---- Flow visualisation -------------------------------------------------
+  function setFlow(states, text) {
+    document.querySelectorAll('#flow .step').forEach(el => {
+      el.className = 'step ' + (states[el.dataset.step] || '');
+    });
+    $('flowText').textContent = text;
+  }
+
+  function flowFor(http, body) {
+    const code = body && body.code;
+    if (http === 400) return setFlow({plm:'skip',validate:'skip',map:'skip',sap:'skip',status:'skip'},
+        'Rejected at the API boundary: request input is invalid. Nothing was read or recorded.');
+    if (code === 'BOM_NOT_FOUND') return setFlow({plm:'fail',validate:'skip',map:'skip',sap:'skip',status:'done'},
+        'BOM not found in PLM. Transfer recorded as VALIDATION_FAILED; SAP was not called.');
+    if (code === 'BOM_VALIDATION_FAILED') return setFlow({plm:'done',validate:'fail',map:'skip',sap:'skip',status:'done'},
+        'Validation failed. Transfer recorded as VALIDATION_FAILED; SAP was not called.');
+    if (body && body.duplicate) return setFlow({plm:'skip',validate:'skip',map:'skip',sap:'skip',status:'done'},
+        'Duplicate Idempotency-Key: the earlier transfer was returned and SAP was NOT called again.');
+    if (body && body.status === 'SUCCEEDED') return setFlow({plm:'done',validate:'done',map:'done',sap:'done',status:'done'},
+        'Transferred in ' + body.attempts + ' attempt(s). Reference ' + body.targetReference + ' (mock).');
+    if (body && body.status && body.status.startsWith('FAILED')) return setFlow({plm:'done',validate:'done',map:'done',sap:'fail',status:'done'},
+        body.status === 'FAILED_PERMANENT' ? 'SAP rejected the data; not retried.' : 'SAP stayed unavailable after ' + body.attempts + ' attempts.');
+    setFlow({}, 'Unexpected response.');
+  }
+
+  // ---- Source BOM ---------------------------------------------------------
+  let bomTimer;
+  function scheduleBomLoad() { clearTimeout(bomTimer); bomTimer = setTimeout(loadBom, 250); }
+
+  async function loadBom() {
+    const m = $('material').value.trim(), r = $('revision').value.trim(), p = $('plant').value.trim();
+    const view = $('bomView');
+    if (!m || !r || !p) { view.innerHTML = '<div class="empty">Enter material, revision and plant.</div>'; return; }
+    try {
+      const res = await fetch('/api/v1/plm/boms/' + encodeURIComponent(m) + '/' + encodeURIComponent(r) + '?plant=' + encodeURIComponent(p));
+      if (res.status === 404) { view.innerHTML = '<div class="empty">No BOM for ' + esc(m) + ' rev ' + esc(r) + ' / plant ' + esc(p) + ' in the mock PLM.</div>'; return; }
+      if (!res.ok) { view.innerHTML = '<div class="empty">Could not load BOM (HTTP ' + res.status + ').</div>'; return; }
+      const b = await res.json();
+      const relCls = b.releaseState === 'RELEASED' ? 's-ok' : 's-warn';
+      view.innerHTML =
+        '<dl class="kv">' +
+          '<dt>Header</dt><dd><b>' + esc(b.materialNumber) + '</b> rev ' + esc(b.revision) + ', plant ' + esc(b.plant) + '</dd>' +
+          '<dt>Release state</dt><dd><span class="pill ' + relCls + '">' + esc(b.releaseState) + '</span></dd>' +
+          '<dt>Change number</dt><dd>' + esc(b.changeNumber) + '</dd>' +
+          '<dt>Source</dt><dd>' + esc(b.sourceSystem) + '</dd>' +
+        '</dl>' +
+        '<table><thead><tr><th>Component</th><th style="text-align:right">Qty</th><th>Unit</th></tr></thead><tbody>' +
+        b.items.map(i => {
+          const bad = !(Number(i.quantity) > 0);
+          return '<tr><td>' + esc(i.componentNumber) + '</td><td class="num"' + (bad ? ' style="color:var(--err);font-weight:600"' : '') + '>' +
+                 esc(i.quantity) + '</td><td>' + esc(i.unit) + '</td></tr>';
+        }).join('') + '</tbody></table>';
+    } catch (e) {
+      view.innerHTML = '<div class="empty">Server not reachable.</div>';
+    }
+  }
+
+  // ---- Result -------------------------------------------------------------
+  function renderResult(http, body, corr) {
+    const el = $('result');
+    if (!body) { el.innerHTML = '<div class="empty">HTTP ' + http + ' with no body.</div>'; return; }
+    if (body.code) {
+      el.innerHTML =
+        '<div class="row"><span class="pill s-err">HTTP ' + http + '</span><b>' + esc(body.code) + '</b></div>' +
+        '<p style="margin:8px 0 0">' + esc(body.message) + '</p>' +
+        (body.details && body.details.length ? '<ul class="msgs">' + body.details.map(d => '<li>' + esc(d) + '</li>').join('') + '</ul>' : '') +
+        '<dl class="kv"><dt>Correlation ID</dt><dd>' + esc(body.correlationId || corr) + '</dd></dl>' +
+        '<details><summary class="muted">Raw JSON</summary><pre>' + esc(JSON.stringify(body, null, 2)) + '</pre></details>';
+      return;
+    }
+    const cls = statusClass(body.status, http);
+    el.innerHTML =
+      '<div class="row"><span class="pill ' + cls + '">HTTP ' + http + '</span>' +
+        '<span class="pill ' + cls + '">' + esc(body.status) + '</span>' +
+        (body.duplicate ? '<span class="pill s-info">duplicate</span>' : '') +
+        '<span class="pill s-info">' + esc(body.gatewayMode) + '</span></div>' +
+      '<dl class="kv">' +
+        '<dt>Material</dt><dd>' + esc(body.materialNumber) + ' rev ' + esc(body.revision) + ', plant ' + esc(body.plant) + '</dd>' +
+        '<dt>Target reference</dt><dd>' + esc(body.targetReference || '–') + '</dd>' +
+        '<dt>Attempts</dt><dd>' + esc(body.attempts) + '</dd>' +
+        '<dt>Transfer ID</dt><dd>' + esc(body.transferId) + '</dd>' +
+        '<dt>Idempotency-Key</dt><dd>' + esc(body.idempotencyKey) + '</dd>' +
+        '<dt>Correlation ID</dt><dd>' + esc(body.correlationId) + '</dd>' +
+      '</dl>' +
+      (body.messages && body.messages.length ? '<b>Messages</b><ul class="msgs">' + body.messages.map(m => '<li>' + esc(m) + '</li>').join('') + '</ul>' : '') +
+      '<details><summary class="muted">Raw JSON</summary><pre>' + esc(JSON.stringify(body, null, 2)) + '</pre></details>';
+  }
+
+  // ---- History ------------------------------------------------------------
+  function renderHistory() {
+    const tb = $('history');
+    if (!history.length) { tb.innerHTML = '<tr><td colspan="7" class="empty">None yet.</td></tr>'; return; }
+    tb.innerHTML = history.map((h, i) =>
+      '<tr><td>' + esc(h.time) + '</td><td>' + esc(h.material) + '</td><td>' + h.http + '</td>' +
+      '<td><span class="pill ' + statusClass(h.status, h.http) + '">' + esc(h.status) + '</span>' + (h.duplicate ? ' <span class="pill s-info">dup</span>' : '') + '</td>' +
+      '<td>' + esc(h.attempts ?? '–') + '</td><td>' + esc(h.ref || '–') + '</td>' +
+      '<td>' + (h.id ? '<a class="link" data-refresh="' + i + '" title="Reload status from server">' + esc(h.id.slice(0, 8)) + '…</a>' : '–') + '</td></tr>'
+    ).join('');
+  }
+
+  $('history').addEventListener('click', async (e) => {
+    const idx = e.target.dataset && e.target.dataset.refresh;
+    if (idx === undefined) return;
+    const h = history[idx];
+    const res = await fetch(API + '/' + encodeURIComponent(h.id));
+    const body = res.ok ? await res.json() : null;
+    renderResult(res.status, body, null);
+    if (body) { h.status = body.status; h.attempts = body.attempts; h.ref = body.targetReference; renderHistory(); }
+  });
+
+  // ---- Send ---------------------------------------------------------------
+  async function send(key) {
+    const payload = { materialNumber: $('material').value.trim(), revision: $('revision').value.trim(), plant: $('plant').value.trim() };
+    const headers = { 'Content-Type': 'application/json' };
+    if (key) headers['Idempotency-Key'] = key;
+    const corr = $('corrId').value.trim();
+    if (corr) headers['X-Correlation-ID'] = corr;
+
+    $('sendBtn').disabled = $('againBtn').disabled = true;
+    setFlow({}, 'Sending…');
+    try {
+      const res = await fetch(API, { method: 'POST', headers, body: JSON.stringify(payload) });
+      const text = await res.text();
+      let body = null;
+      try { body = text ? JSON.parse(text) : null; } catch (_) { /* non-JSON */ }
+      renderResult(res.status, body, res.headers.get('X-Correlation-ID'));
+      flowFor(res.status, body);
+      history.unshift({
+        time: new Date().toLocaleTimeString(), material: payload.materialNumber + ' / ' + payload.revision,
+        http: res.status, status: body ? (body.status || body.code) : 'HTTP ' + res.status,
+        duplicate: body && body.duplicate, attempts: body && body.attempts,
+        ref: body && body.targetReference, id: body && body.transferId
+      });
+      renderHistory();
+      lastKey = key;
+    } catch (e) {
+      $('result').innerHTML = '<div class="empty">Server not reachable. Is the app running on this port?</div>';
+      setFlow({}, 'Request failed.');
+    } finally {
+      $('sendBtn').disabled = false;
+      $('againBtn').disabled = !lastKey;
+    }
+  }
+
+  $('form').addEventListener('submit', (e) => { e.preventDefault(); send($('idemKey').value.trim()); });
+  $('againBtn').addEventListener('click', () => { $('idemKey').value = lastKey; send(lastKey); });
+  $('newKeyBtn').addEventListener('click', newKey);
+
+  document.querySelectorAll('[data-preset]').forEach(btn => btn.addEventListener('click', () => {
+    const [m, r, p] = btn.dataset.preset.split('|');
+    $('material').value = m; $('revision').value = r; $('plant').value = p;
+    newKey(); loadBom();
+  }));
+  ['material', 'revision', 'plant'].forEach(id => $(id).addEventListener('input', scheduleBomLoad));
+
+  fetch('/api/v1/info').then(r => r.json()).then(i => {
+    $('modeBadge').textContent = 'gateway: ' + i.gatewayMode;
+    $('modeBadge').className = 'pill ' + (i.gatewayMode === 'MOCK' ? 's-warn' : 's-info');
+  }).catch(() => { $('modeBadge').textContent = 'gateway: unknown'; });
+  loadBom();
+})();
+</script>
+</body>
+</html>

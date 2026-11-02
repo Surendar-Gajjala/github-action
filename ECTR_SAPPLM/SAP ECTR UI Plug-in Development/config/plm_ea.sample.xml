@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ============================================================================================
+  ILLUSTRATIVE ONLY. THIS IS NOT THE REAL plm_ea.xml FORMAT.
+  ============================================================================================
+
+  The real ECTR layout/configuration files (such as plm_ea.xml) have element names, attribute
+  names and a location that depend on the ECTR release and the customer's installation. They
+  are not reproduced here, because we have no verified copy of their schema.
+
+  What this file shows is the INFORMATION a plug-in team usually has to agree on with the ECTR
+  administrator when a new plug-in feature needs UI configuration:
+
+    1. which object types / views are affected,
+    2. which fields are displayed, in which order, and which are mandatory,
+    3. the label of each field in every supported language,
+    4. which UI actions (menu entries, buttons, drop targets) the plug-in contributes.
+
+  How to use it:
+    - Fill it in as a requirements sheet.
+    - Then translate each item into the actual syntax, using the customer's existing plm_ea.xml
+      and the SAP ECTR documentation for their release (see docs/08-xml-configuration.md).
+    - Keep the "mandatory" flags here consistent with ectr-plugin-core/.../rules/validation-rules.xml:
+      the UI can mark a field as required, but only the plug-in rules actually enforce it.
+  ============================================================================================
+-->
+<plugin-ui-requirements plugin="ectr-plugin-core" version="1.0.0">
+
+  <supported-languages>en,de</supported-languages>
+
+  <!-- Detail/properties view for parts -->
+  <view objectType="PART" purpose="properties panel">
+    <field key="MATERIAL_GROUP" mandatory="true"  order="10">
+      <label lang="en">Material group</label>
+      <label lang="de">Warengruppe</label>
+    </field>
+    <field key="MATERIAL"       mandatory="true"  order="20">
+      <label lang="en">Material</label>
+      <label lang="de">Werkstoff</label>
+    </field>
+    <field key="WEIGHT_KG"      mandatory="true"  order="30">
+      <label lang="en">Weight (kg)</label>
+      <label lang="de">Gewicht (kg)</label>
+    </field>
+    <field key="REVISION"       mandatory="true"  order="40" readOnly="true">
+      <label lang="en">Revision</label>
+      <label lang="de">Revision</label>
+    </field>
+    <field key="DESCRIPTION"    mandatory="true"  order="50" multilingual="true">
+      <label lang="en">Description</label>
+      <label lang="de">Beschreibung</label>
+    </field>
+  </view>
+
+  <!-- Object Browser contributions -->
+  <object-browser>
+    <drop-target objectType="FOLDER"   accepts="ASSEMBLY" action="create packaging plan"/>
+    <drop-target objectType="ASSEMBLY" accepts="PART,ASSEMBLY" action="link into structure (validated)"/>
+  </object-browser>
+
+  <!-- Mapping from our logical keys to backend fields: to be completed with the SAP team -->
+  <field-mapping>
+    <map key="MATERIAL_GROUP" backend="TODO: SAP field / ECTR attribute name"/>
+    <map key="WEIGHT_KG"      backend="TODO: SAP field / ECTR attribute name"/>
+    <map key="REVISION"       backend="TODO: SAP field / ECTR attribute name"/>
+  </field-mapping>
+
+</plugin-ui-requirements>

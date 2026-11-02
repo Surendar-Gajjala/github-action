@@ -1,0 +1,1114 @@
+
+my goal is to Integrate the RapidRatings apis to Z2 Data Integrations  
+
+Below you will find the API keys and additional information. Review them, understand the schema, the APIs and prepare some notes on how to integrate this into Z2 Enterprise. In Z2 Enterprise we will have a place called Data Integrations and customers can select which integrations they want to enable for their tenants. Basically, integrations have some common functions:
+
+Integration Authentication
+Schema
+Schema Mapping to Z2 Enterprise
+Syncing of Schema and Data
+Manual and Scheduled Syncs.
+Sync Schedule and Change history
+
+Endpoints:
+
+Authentication: https://rridata.sandbox.rrilabs.co/v2.0/oauth/token/
+
+frontend call the authencation api and getToken  after authencation to call the Companies schema to map Z2Company dataModel properties based on the company and id to call the get company details api call "https://rridata.sandbox.rrilabs.co/v2.0/companies/KawjbGJ/",
+
+Resonese {
+{
+    "id": "KawjbGJ",
+    "name": "Rite Aid Corporation",
+    "country": "USA",
+    "ticker": "RAD",
+    "exchange": "US",
+    "sector": "Retail",
+    "href": "https://rridata.sandbox.rrilabs.co/v2.0/companies/KawjbGJ/",
+    "financials": "https://rridata.sandbox.rrilabs.co/v2.0/companies/KawjbGJ/financials/",
+    "periods": "https://rridata.sandbox.rrilabs.co/v2.0/companies/KawjbGJ/periods/",
+    "ratings": "https://rridata.sandbox.rrilabs.co/v2.0/companies/KawjbGJ/ratings/",
+    "latestRatings": [
+        {
+            "id": "2020YE",
+            "href": "https://rridata.sandbox.rrilabs.co/v2.0/companies/KawjbGJ/ratings/2020YE/",
+            "eqyYear": 2020,
+            "period": "YE",
+            "financialDate": "2020-02-29",
+            "reportingPeriod": "2020-05-15",
+            "fhr": 35,
+            "chs": 37,
+            "probabilityDefault": 1.5853,
+            "termPd": {
+                "year2": 8.24,
+                "year3": 12.18,
+                "year4": 15.85,
+                "year5": 19.4,
+                "year6": 23.04,
+                "year7": 26.93,
+                "year8": 31.16,
+                "year9": 35.81,
+                "year10": 40.85
+            },
+            "delta": 13,
+            "simulatedFhr": 37,
+            "simulatedFhrDelta": 9,
+            "operatingProfitability": 36,
+            "netProfitability": 5,
+            "capitalStructureEfficiency": 82,
+            "costStructureEfficiency": 50,
+            "leverage": "Weak",
+            "liquidity": "Weak",
+            "earningsPerformance": "Weak"
+        },
+        {
+            "id": "2020Q3",
+            "href": "https://rridata.sandbox.rrilabs.co/v2.0/companies/KawjbGJ/ratings/2020Q3/",
+            "eqyYear": 2020,
+            "period": "Q3",
+            "financialDate": "2019-11-30",
+            "reportingPeriod": "2020-05-15",
+            "fhr": 28,
+            "chs": 32,
+            "probabilityDefault": 3.7449,
+            "termPd": {
+                "year2": 13.2,
+                "year3": 17.81,
+                "year4": 21.75,
+                "year5": 25.47,
+                "year6": 29.25,
+                "year7": 33.3,
+                "year8": 37.71,
+                "year9": 42.5,
+                "year10": 47.63
+            },
+            "delta": 5,
+            "simulatedFhr": 29,
+            "simulatedFhrDelta": -5,
+            "operatingProfitability": 18,
+            "netProfitability": 5,
+            "capitalStructureEfficiency": 77,
+            "costStructureEfficiency": 50,
+            "leverage": "Weak",
+            "liquidity": "Weak",
+            "earningsPerformance": "Weak"
+        },
+        {
+            "id": "2020Q2",
+            "href": "https://rridata.sandbox.rrilabs.co/v2.0/companies/KawjbGJ/ratings/2020Q2/",
+            "eqyYear": 2020,
+            "period": "Q2",
+            "financialDate": "2019-08-31",
+            "reportingPeriod": "2020-05-15",
+            "fhr": 26,
+            "chs": 30,
+            "probabilityDefault": 4.8748,
+            "termPd": {
+                "year2": 15.28,
+                "year3": 20.01,
+                "year4": 23.97,
+                "year5": 27.67,
+                "year6": 31.46,
+                "year7": 35.52,
+                "year8": 39.94,
+                "year9": 44.73,
+                "year10": 49.84
+            },
+            "delta": 3,
+            "simulatedFhr": 28,
+            "simulatedFhrDelta": -5,
+            "operatingProfitability": 15,
+            "netProfitability": 5,
+            "capitalStructureEfficiency": 76,
+            "costStructureEfficiency": 50,
+            "leverage": "Weak",
+            "liquidity": "Weak",
+            "earningsPerformance": "Weak"
+        },
+        {
+            "id": "2020Q1",
+            "href": "https://rridata.sandbox.rrilabs.co/v2.0/companies/KawjbGJ/ratings/2020Q1/",
+            "eqyYear": 2020,
+            "period": "Q1",
+            "financialDate": "2019-06-01",
+            "reportingPeriod": "2020-05-15",
+            "fhr": 23,
+            "chs": 29,
+            "probabilityDefault": 7.3713,
+            "termPd": {
+                "year2": 19.2,
+                "year3": 24.01,
+                "year4": 27.88,
+                "year5": 31.49,
+                "year6": 35.21,
+                "year7": 39.24,
+                "year8": 43.64,
+                "year9": 48.4,
+                "year10": 53.44
+            },
+            "delta": -6,
+            "simulatedFhr": 28,
+            "simulatedFhrDelta": -1,
+            "operatingProfitability": 15,
+            "netProfitability": 5,
+            "capitalStructureEfficiency": 77,
+            "costStructureEfficiency": 43,
+            "leverage": "Weak",
+            "liquidity": "Weak",
+            "earningsPerformance": "Weak"
+        },
+        {
+            "id": "2019YE",
+            "href": "https://rridata.sandbox.rrilabs.co/v2.0/companies/KawjbGJ/ratings/2019YE/",
+            "eqyYear": 2019,
+            "period": "YE",
+            "financialDate": "2019-03-02",
+            "reportingPeriod": "2020-05-15",
+            "fhr": 22,
+            "chs": 29,
+            "probabilityDefault": 8.4984,
+            "termPd": {
+                "year2": 20.77,
+                "year3": 25.56,
+                "year4": 29.36,
+                "year5": 32.91,
+                "year6": 36.6,
+                "year7": 40.6,
+                "year8": 44.98,
+                "year9": 49.71,
+                "year10": 54.71
+            },
+            "delta": -11,
+            "simulatedFhr": 28,
+            "simulatedFhrDelta": -5,
+            "operatingProfitability": 17,
+            "netProfitability": 5,
+            "capitalStructureEfficiency": 73,
+            "costStructureEfficiency": 43,
+            "leverage": "Weak",
+            "liquidity": "Weak",
+            "earningsPerformance": "Weak"
+        }
+    ],
+    "reportLinks": {
+        "fhr": "https://portal.sandbox.rrilabs.co/reportsapi/31136/fhr",
+        "financialDialog": "https://portal.sandbox.rrilabs.co/reportsapi/31136/financial_dialogue",
+        "peerBenchmark": "https://portal.sandbox.rrilabs.co/reportsapi/31136/peer_benchmark"
+    },
+    "address": "",
+    "reports": [
+        {
+            "downloadHref": "https://rridata.sandbox.rrilabs.co/v2.0/companies/KawjbGJ/reports/?reportType=fhr",
+            "reportType": "fhr"
+        },
+        {
+            "downloadHref": "https://rridata.sandbox.rrilabs.co/v2.0/companies/KawjbGJ/reports/?reportType=financial_dialogue",
+            "reportType": "financial_dialogue"
+        },
+        {
+            "downloadHref": "https://rridata.sandbox.rrilabs.co/v2.0/companies/KawjbGJ/reports/?reportType=peer_benchmark",
+            "reportType": "peer_benchmark"
+        }
+    ],
+    "sectorAverages": {
+        "chs": 48.5,
+        "fhr": 55.6
+    },
+    "industryClassificationSystem": null,
+    "industryClassificationCode": null,
+    "dataScale": "millions",
+    "currency": "USD",
+    "dataConfidential": "PUB",
+    "externalSourceId": null,
+    "externalSourceIds": []
+}
+"periods": [{
+    "count": 27,
+    "previous": null,
+    "next": "https://rridata.sandbox.rrilabs.co/v2.0/companies/KawjbGJ/periods/?page=2",
+    "results": [
+        {
+            "debitOwnedWithinOneYear": 8.84,
+            "href": "https://rridata.sandbox.rrilabs.co/v2.0/companies/KawjbGJ/periods/2020YE/",
+            "id": "2020YE",
+            "netInvestingCashFlow": -86.542,
+            "period": "YE",
+            "totalCurrentAssets": 3700.641,
+            "earningsBeforeInterestAndTax": 152.271,
+            "companyTaxExpense": 387.607,
+            "netFundingCashFlow": -326.652,
+            "salesRevenue": 21928.393,
+            "netProfitAfterTax": -469.219,
+            "abnormalItems": -92.793,
+            "financialDate": "2020-02-29",
+            "totalLiabilities": 8777.842,
+            "bankCashBalances": 218.18,
+            "cashFromOperationsFromCashFlow": null,
+            "termLoans": 3096.594,
+            "interestReceived": null,
+            "totalAssets": 9452.369,
+            "financialAssets": null,
+            "currency": "USD",
+            "fixedAssets": 4119.094,
+            "eqyYear": 2020,
+            "interestExpense": 229.657,
+            "totalShareholderEquity": 674.527,
+            "totalCurrentLiabilities": 2766.463
+        },
+        {
+            "debitOwnedWithinOneYear": 9.486,
+            "href": "https://rridata.sandbox.rrilabs.co/v2.0/companies/KawjbGJ/periods/2020Q3/",
+            "id": "2020Q3",
+            "netInvestingCashFlow": -128.587,
+            "period": "Q3",
+            "totalCurrentAssets": 4216.267,
+            "earningsBeforeInterestAndTax": 45.942,
+            "companyTaxExpense": 230.882,
+            "netFundingCashFlow": 153.131,
+            "salesRevenue": 21580.796,
+            "netProfitAfterTax": -381.387,
+            "abnormalItems": -96.091,
+            "financialDate": "2019-11-30",
+            "totalLiabilities": 9412.933,
+            "bankCashBalances": 289.498,
+            "cashFromOperationsFromCashFlow": null,
+            "termLoans": 3586.868,
+            "interestReceived": null,
+            "totalAssets": 10428.791,
+            "financialAssets": null,
+            "currency": "USD",
+            "fixedAssets": 4189.338,
+            "eqyYear": 2020,
+            "interestExpense": 228.923,
+            "totalShareholderEquity": 1015.858,
+            "totalCurrentLiabilities": 2886.648
+        },
+        {
+            "debitOwnedWithinOneYear": 10.704,
+            "href": "https://rridata.sandbox.rrilabs.co/v2.0/companies/KawjbGJ/periods/2020Q2/",
+            "id": "2020Q2",
+            "netInvestingCashFlow": -137.268,
+            "period": "Q2",
+            "totalCurrentAssets": 4385.359,
+            "earningsBeforeInterestAndTax": -26.8,
+            "companyTaxExpense": 228.535,
+            "netFundingCashFlow": 345.051,
+            "salesRevenue": 21568.558,
+            "netProfitAfterTax": -450.923,
+            "abnormalItems": -128.97,
+            "financialDate": "2019-08-31",
+            "totalLiabilities": 9712.627,
+            "bankCashBalances": 142.181,
+            "cashFromOperationsFromCashFlow": null,
+            "termLoans": 3857.145,
+            "interestReceived": null,
+            "totalAssets": 10673.213,
+            "financialAssets": null,
+            "currency": "USD",
+            "fixedAssets": 4215.118,
+            "eqyYear": 2020,
+            "interestExpense": 227.075,
+            "totalShareholderEquity": 960.586,
+            "totalCurrentLiabilities": 2859.739
+        },
+        {
+            "debitOwnedWithinOneYear": 11.751,
+            "href": "https://rridata.sandbox.rrilabs.co/v2.0/companies/KawjbGJ/periods/2020Q1/",
+            "id": "2020Q1",
+            "netInvestingCashFlow": -136.101,
+            "period": "Q1",
+            "totalCurrentAssets": 4128.743,
+            "earningsBeforeInterestAndTax": -441.877,
+            "companyTaxExpense": 94.348,
+            "netFundingCashFlow": 382.879,
+            "salesRevenue": 21623.656,
+            "netProfitAfterTax": -724.566,
+            "abnormalItems": -517.153,
+            "financialDate": "2019-06-01",
+            "totalLiabilities": 9494.472,
+            "bankCashBalances": 190.453,
+            "cashFromOperationsFromCashFlow": null,
+            "termLoans": 3604.716,
+            "interestReceived": null,
+            "totalAssets": 10529.689,
+            "financialAssets": null,
+            "currency": "USD",
+            "fixedAssets": 4269.893,
+            "eqyYear": 2020,
+            "interestExpense": 223.206,
+            "totalShareholderEquity": 1035.217,
+            "totalCurrentLiabilities": 2845.143
+        },
+        {
+            "debitOwnedWithinOneYear": 16.111,
+            "href": "https://rridata.sandbox.rrilabs.co/v2.0/companies/KawjbGJ/periods/2019YE/",
+            "id": "2019YE",
+            "netInvestingCashFlow": 466.188,
+            "period": "YE",
+            "totalCurrentAssets": 4101.719,
+            "earningsBeforeInterestAndTax": -399.761,
+            "companyTaxExpense": 77.477,
+            "netFundingCashFlow": -540.504,
+            "salesRevenue": 21639.557,
+            "netProfitAfterTax": -666.954,
+            "abnormalItems": -483.738,
+            "financialDate": "2019-03-02",
+            "totalLiabilities": 6404.677,
+            "bankCashBalances": 144.353,
+            "cashFromOperationsFromCashFlow": null,
+            "termLoans": 3478.649,
+            "interestReceived": null,
+            "totalAssets": 7591.367,
+            "financialAssets": null,
+            "currency": "USD",
+            "fixedAssets": 1308.514,
+            "eqyYear": 2019,
+            "interestExpense": 227.728,
+            "totalShareholderEquity": 1186.69,
+            "totalCurrentLiabilities": 2443.135
+        },
+        {
+            "debitOwnedWithinOneYear": 16.066,
+            "href": "https://rridata.sandbox.rrilabs.co/v2.0/companies/KawjbGJ/periods/2019Q3/",
+            "id": "2019Q3",
+            "netInvestingCashFlow": 3774.494,
+            "period": "Q3",
+            "totalCurrentAssets": 4330.478,
+            "earningsBeforeInterestAndTax": -586.625,
+            "companyTaxExpense": -225.573,
+            "netFundingCashFlow": -3441.39,
+            "salesRevenue": 21654.176,
+            "netProfitAfterTax": -570.233,
+            "abnormalItems": -737.242,
+            "financialDate": "2018-12-01",
+            "totalLiabilities": 6629.544,
+            "bankCashBalances": 410.043,
+            "cashFromOperationsFromCashFlow": null,
+            "termLoans": 3420.666,
+            "interestReceived": null,
+            "totalAssets": 8082.958,
+            "financialAssets": null,
+            "currency": "USD",
+            "fixedAssets": 1335.74,
+            "eqyYear": 2019,
+            "interestExpense": 225.636,
+            "totalShareholderEquity": 1453.414,
+            "totalCurrentLiabilities": 2720.325
+        },
+        {
+            "debitOwnedWithinOneYear": 18.668,
+            "href": "https://rridata.sandbox.rrilabs.co/v2.0/companies/KawjbGJ/periods/2019Q2/",
+            "id": "2019Q2",
+            "netInvestingCashFlow": 3934.417,
+            "period": "Q2",
+            "totalCurrentAssets": 4371.662,
+            "earningsBeforeInterestAndTax": -607.26,
+            "companyTaxExpense": -240.163,
+            "netFundingCashFlow": -3646.535,
+            "salesRevenue": 21557.286,
+            "netProfitAfterTax": -571.165,
+            "abnormalItems": -738.553,
+            "financialDate": "2018-09-01",
+            "totalLiabilities": 6709.718,
+            "bankCashBalances": 132.468,
+            "cashFromOperationsFromCashFlow": null,
+            "termLoans": 3508.278,
+            "interestReceived": null,
+            "totalAssets": 8165.668,
+            "financialAssets": null,
+            "currency": "USD",
+            "fixedAssets": 1350.735,
+            "eqyYear": 2019,
+            "interestExpense": 219.936,
+            "totalShareholderEquity": 1455.95,
+            "totalCurrentLiabilities": 2691.597
+        },
+        {
+            "debitOwnedWithinOneYear": 19.025,
+            "href": "https://rridata.sandbox.rrilabs.co/v2.0/companies/KawjbGJ/periods/2019Q1/",
+            "id": "2019Q1",
+            "netInvestingCashFlow": 3925.758,
+            "period": "Q1",
+            "totalCurrentAssets": 4196.143,
+            "earningsBeforeInterestAndTax": 174.948,
+            "companyTaxExpense": -26.517,
+            "netFundingCashFlow": -4076.361,
+            "salesRevenue": 23814.827,
+            "netProfitAfterTax": -48.101,
+            "abnormalItems": -1.882,
+            "financialDate": "2018-06-02",
+            "totalLiabilities": 6517.142,
+            "bankCashBalances": 147.092,
+            "cashFromOperationsFromCashFlow": null,
+            "termLoans": 3163.578,
+            "interestReceived": null,
+            "totalAssets": 8329.453,
+            "financialAssets": null,
+            "currency": "USD",
+            "fixedAssets": 1401.924,
+            "eqyYear": 2019,
+            "interestExpense": 274.964,
+            "totalShareholderEquity": 1812.311,
+            "totalCurrentLiabilities": 2817.094
+        },
+        {
+            "debitOwnedWithinOneYear": 20.354,
+            "href": "https://rridata.sandbox.rrilabs.co/v2.0/companies/KawjbGJ/periods/2018Q3/",
+            "id": "2018Q3",
+            "netInvestingCashFlow": -40.844,
+            "period": "Q3",
+            "totalCurrentAssets": 5929.445,
+            "earningsBeforeInterestAndTax": 520.641,
+            "companyTaxExpense": 103.677,
+            "netFundingCashFlow": -431.95,
+            "salesRevenue": 29354.887,
+            "netProfitAfterTax": 56.043,
+            "abnormalItems": 278.832,
+            "financialDate": "2017-12-02",
+            "totalLiabilities": 10515.47,
+            "bankCashBalances": 169.8,
+            "cashFromOperationsFromCashFlow": null,
+            "termLoans": 3017.354,
+            "interestReceived": null,
+            "totalAssets": 11340.614,
+            "financialAssets": null,
+            "currency": "USD",
+            "fixedAssets": 1479.214,
+            "eqyYear": 2018,
+            "interestExpense": 386.687,
+            "totalShareholderEquity": 825.144,
+            "totalCurrentLiabilities": 6905.915
+        },
+        {
+            "debitOwnedWithinOneYear": 22.491,
+            "href": "https://rridata.sandbox.rrilabs.co/v2.0/companies/KawjbGJ/periods/2018Q2/",
+            "id": "2018Q2",
+            "netInvestingCashFlow": -329.005,
+            "period": "Q2",
+            "totalCurrentAssets": 5181.369,
+            "earningsBeforeInterestAndTax": 618.104,
+            "companyTaxExpense": 111.651,
+            "netFundingCashFlow": -78.938,
+            "salesRevenue": 32091.443,
+            "netProfitAfterTax": 89.235,
+            "abnormalItems": 275.506,
+            "financialDate": "2017-09-02",
+            "totalLiabilities": 10764.698,
+            "bankCashBalances": 238.978,
+            "cashFromOperationsFromCashFlow": null,
+            "termLoans": 7120.439,
+            "interestReceived": null,
+            "totalAssets": 11498.308,
+            "financialAssets": null,
+            "currency": "USD",
+            "fixedAssets": 2188.217,
+            "eqyYear": 2018,
+            "interestExpense": 442.688,
+            "totalShareholderEquity": 733.61,
+            "totalCurrentLiabilities": 2981.211
+        }
+    ]
+}],
+ "ratings": [{
+    "count": 27,
+    "previous": null,
+    "next": "https://rridata.sandbox.rrilabs.co/v2.0/companies/KawjbGJ/ratings/?page=2",
+    "results": [
+        {
+            "id": "2020YE",
+            "href": "https://rridata.sandbox.rrilabs.co/v2.0/companies/KawjbGJ/ratings/2020YE/",
+            "eqyYear": 2020,
+            "period": "YE",
+            "financialDate": "2020-02-29",
+            "reportingPeriod": "2020-05-15",
+            "fhr": 35,
+            "chs": 37,
+            "probabilityDefault": 1.5853,
+            "termPd": {
+                "year2": 8.24,
+                "year3": 12.18,
+                "year4": 15.85,
+                "year5": 19.4,
+                "year6": 23.04,
+                "year7": 26.93,
+                "year8": 31.16,
+                "year9": 35.81,
+                "year10": 40.85
+            },
+            "delta": 13,
+            "simulatedFhr": 37,
+            "simulatedFhrDelta": 9,
+            "operatingProfitability": 36,
+            "netProfitability": 5,
+            "capitalStructureEfficiency": 82,
+            "costStructureEfficiency": 50,
+            "leverage": "Weak",
+            "liquidity": "Weak",
+            "earningsPerformance": "Weak"
+        },
+        {
+            "id": "2020Q3",
+            "href": "https://rridata.sandbox.rrilabs.co/v2.0/companies/KawjbGJ/ratings/2020Q3/",
+            "eqyYear": 2020,
+            "period": "Q3",
+            "financialDate": "2019-11-30",
+            "reportingPeriod": "2020-05-15",
+            "fhr": 28,
+            "chs": 32,
+            "probabilityDefault": 3.7449,
+            "termPd": {
+                "year2": 13.2,
+                "year3": 17.81,
+                "year4": 21.75,
+                "year5": 25.47,
+                "year6": 29.25,
+                "year7": 33.3,
+                "year8": 37.71,
+                "year9": 42.5,
+                "year10": 47.63
+            },
+            "delta": 5,
+            "simulatedFhr": 29,
+            "simulatedFhrDelta": -5,
+            "operatingProfitability": 18,
+            "netProfitability": 5,
+            "capitalStructureEfficiency": 77,
+            "costStructureEfficiency": 50,
+            "leverage": "Weak",
+            "liquidity": "Weak",
+            "earningsPerformance": "Weak"
+        },
+        {
+            "id": "2020Q2",
+            "href": "https://rridata.sandbox.rrilabs.co/v2.0/companies/KawjbGJ/ratings/2020Q2/",
+            "eqyYear": 2020,
+            "period": "Q2",
+            "financialDate": "2019-08-31",
+            "reportingPeriod": "2020-05-15",
+            "fhr": 26,
+            "chs": 30,
+            "probabilityDefault": 4.8748,
+            "termPd": {
+                "year2": 15.28,
+                "year3": 20.01,
+                "year4": 23.97,
+                "year5": 27.67,
+                "year6": 31.46,
+                "year7": 35.52,
+                "year8": 39.94,
+                "year9": 44.73,
+                "year10": 49.84
+            },
+            "delta": 3,
+            "simulatedFhr": 28,
+            "simulatedFhrDelta": -5,
+            "operatingProfitability": 15,
+            "netProfitability": 5,
+            "capitalStructureEfficiency": 76,
+            "costStructureEfficiency": 50,
+            "leverage": "Weak",
+            "liquidity": "Weak",
+            "earningsPerformance": "Weak"
+        },
+        {
+            "id": "2020Q1",
+            "href": "https://rridata.sandbox.rrilabs.co/v2.0/companies/KawjbGJ/ratings/2020Q1/",
+            "eqyYear": 2020,
+            "period": "Q1",
+            "financialDate": "2019-06-01",
+            "reportingPeriod": "2020-05-15",
+            "fhr": 23,
+            "chs": 29,
+            "probabilityDefault": 7.3713,
+            "termPd": {
+                "year2": 19.2,
+                "year3": 24.01,
+                "year4": 27.88,
+                "year5": 31.49,
+                "year6": 35.21,
+                "year7": 39.24,
+                "year8": 43.64,
+                "year9": 48.4,
+                "year10": 53.44
+            },
+            "delta": -6,
+            "simulatedFhr": 28,
+            "simulatedFhrDelta": -1,
+            "operatingProfitability": 15,
+            "netProfitability": 5,
+            "capitalStructureEfficiency": 77,
+            "costStructureEfficiency": 43,
+            "leverage": "Weak",
+            "liquidity": "Weak",
+            "earningsPerformance": "Weak"
+        },
+        {
+            "id": "2019YE",
+            "href": "https://rridata.sandbox.rrilabs.co/v2.0/companies/KawjbGJ/ratings/2019YE/",
+            "eqyYear": 2019,
+            "period": "YE",
+            "financialDate": "2019-03-02",
+            "reportingPeriod": "2020-05-15",
+            "fhr": 22,
+            "chs": 29,
+            "probabilityDefault": 8.4984,
+            "termPd": {
+                "year2": 20.77,
+                "year3": 25.56,
+                "year4": 29.36,
+                "year5": 32.91,
+                "year6": 36.6,
+                "year7": 40.6,
+                "year8": 44.98,
+                "year9": 49.71,
+                "year10": 54.71
+            },
+            "delta": -11,
+            "simulatedFhr": 28,
+            "simulatedFhrDelta": -5,
+            "operatingProfitability": 17,
+            "netProfitability": 5,
+            "capitalStructureEfficiency": 73,
+            "costStructureEfficiency": 43,
+            "leverage": "Weak",
+            "liquidity": "Weak",
+            "earningsPerformance": "Weak"
+        },
+        {
+            "id": "2019Q3",
+            "href": "https://rridata.sandbox.rrilabs.co/v2.0/companies/KawjbGJ/ratings/2019Q3/",
+            "eqyYear": 2019,
+            "period": "Q3",
+            "financialDate": "2018-12-01",
+            "reportingPeriod": "2019-01-11",
+            "fhr": 23,
+            "chs": 29,
+            "probabilityDefault": 7.3713,
+            "termPd": {
+                "year2": 19.2,
+                "year3": 24.01,
+                "year4": 27.88,
+                "year5": 31.49,
+                "year6": 35.21,
+                "year7": 39.24,
+                "year8": 43.64,
+                "year9": 48.4,
+                "year10": 53.44
+            },
+            "delta": -20,
+            "simulatedFhr": 34,
+            "simulatedFhrDelta": 3,
+            "operatingProfitability": 17,
+            "netProfitability": 5,
+            "capitalStructureEfficiency": 71,
+            "costStructureEfficiency": 43,
+            "leverage": "Weak",
+            "liquidity": "Average",
+            "earningsPerformance": "Weak"
+        },
+        {
+            "id": "2019Q2",
+            "href": "https://rridata.sandbox.rrilabs.co/v2.0/companies/KawjbGJ/ratings/2019Q2/",
+            "eqyYear": 2019,
+            "period": "Q2",
+            "financialDate": "2018-09-01",
+            "reportingPeriod": "2018-10-06",
+            "fhr": 23,
+            "chs": 29,
+            "probabilityDefault": 7.3713,
+            "termPd": {
+                "year2": 19.2,
+                "year3": 24.01,
+                "year4": 27.88,
+                "year5": 31.49,
+                "year6": 35.21,
+                "year7": 39.24,
+                "year8": 43.64,
+                "year9": 48.4,
+                "year10": 53.44
+            },
+            "delta": -18,
+            "simulatedFhr": 33,
+            "simulatedFhrDelta": 2,
+            "operatingProfitability": 17,
+            "netProfitability": 5,
+            "capitalStructureEfficiency": 71,
+            "costStructureEfficiency": 43,
+            "leverage": "Weak",
+            "liquidity": "Weak",
+            "earningsPerformance": "Weak"
+        },
+        {
+            "id": "2019Q1",
+            "href": "https://rridata.sandbox.rrilabs.co/v2.0/companies/KawjbGJ/ratings/2019Q1/",
+            "eqyYear": 2019,
+            "period": "Q1",
+            "financialDate": "2018-06-02",
+            "reportingPeriod": "2018-07-10",
+            "fhr": 29,
+            "chs": 39,
+            "probabilityDefault": 3.2935,
+            "termPd": {
+                "year2": 12.3,
+                "year3": 16.82,
+                "year4": 20.74,
+                "year5": 24.45,
+                "year6": 28.23,
+                "year7": 32.27,
+                "year8": 36.66,
+                "year9": 41.44,
+                "year10": 46.57
+            },
+            "delta": 0,
+            "simulatedFhr": 29,
+            "simulatedFhrDelta": -1,
+            "operatingProfitability": 25,
+            "netProfitability": 21,
+            "capitalStructureEfficiency": 67,
+            "costStructureEfficiency": 57,
+            "leverage": "Weak",
+            "liquidity": "Weak",
+            "earningsPerformance": "Weak"
+        },
+        {
+            "id": "2018Q3",
+            "href": "https://rridata.sandbox.rrilabs.co/v2.0/companies/KawjbGJ/ratings/2018Q3/",
+            "eqyYear": 2018,
+            "period": "Q3",
+            "financialDate": "2017-12-02",
+            "reportingPeriod": "2018-01-12",
+            "fhr": 43,
+            "chs": 62,
+            "probabilityDefault": 0.6416,
+            "termPd": {
+                "year2": 5.17,
+                "year3": 8.33,
+                "year4": 11.52,
+                "year5": 14.73,
+                "year6": 18.06,
+                "year7": 21.64,
+                "year8": 25.58,
+                "year9": 29.93,
+                "year10": 34.73
+            },
+            "delta": 4,
+            "simulatedFhr": 31,
+            "simulatedFhrDelta": -9,
+            "operatingProfitability": 62,
+            "netProfitability": 43,
+            "capitalStructureEfficiency": 87,
+            "costStructureEfficiency": 71,
+            "leverage": "Average",
+            "liquidity": "Weak",
+            "earningsPerformance": "Weak"
+        },
+        {
+            "id": "2018Q2",
+            "href": "https://rridata.sandbox.rrilabs.co/v2.0/companies/KawjbGJ/ratings/2018Q2/",
+            "eqyYear": 2018,
+            "period": "Q2",
+            "financialDate": "2017-09-02",
+            "reportingPeriod": "2017-10-09",
+            "fhr": 41,
+            "chs": 60,
+            "probabilityDefault": 0.8004,
+            "termPd": {
+                "year2": 5.77,
+                "year3": 9.11,
+                "year4": 12.42,
+                "year5": 15.72,
+                "year6": 19.14,
+                "year7": 22.8,
+                "year8": 26.81,
+                "year9": 31.25,
+                "year10": 36.12
+            },
+            "delta": 0,
+            "simulatedFhr": 31,
+            "simulatedFhrDelta": -11,
+            "operatingProfitability": 55,
+            "netProfitability": 50,
+            "capitalStructureEfficiency": 73,
+            "costStructureEfficiency": 72,
+            "leverage": "Weak",
+            "liquidity": "Weak",
+            "earningsPerformance": "Weak"
+        }
+    ]
+}],
+
+}
+
+
+Z2 Company(DataModel) (existing) 
+├── Financial (existing NESTED)
+│   ├── Moody's Credit Rating
+│   └── D&B Rating
+├── Kharon Risk Data (existing NESTED)
+└── RapidRatings (new NESTED)   map the RapidRatings to existing Z2 Company(DataModel)
+    ├── RRID
+    ├── Source Company Name
+    ├── Source Country
+    ├── Ticker
+    ├── Exchange
+    ├── Sector
+    ├── Company / Financials / Periods / Ratings URLs
+    ├── Currency / Data Scale / Data Confidentiality
+    ├── Report Links
+    ├── latestRatings  (PROPS_ARRAY)
+    |     ├── {
+			"id": "2020YE",
+			"href": "https://rridata.sandbox.rrilabs.co/v2.0/companies/KawjbGJ/ratings/2020YE/",
+			"eqyYear": 2020,
+			"period": "YE",
+			"financialDate": "2020-02-29",
+			"reportingPeriod": "2020-05-15",
+			"fhr": 35,
+			"chs": 37,
+			"probabilityDefault": 1.5853,
+			"termPd": {
+				"year2": 8.24,
+				"year3": 12.18,
+				"year4": 15.85,
+				"year5": 19.4,
+				"year6": 23.04,
+				"year7": 26.93,
+				"year8": 31.16,
+				"year9": 35.81,
+				"year10": 40.85
+			},
+			"delta": 13,
+			"simulatedFhr": 37,
+			"simulatedFhrDelta": 9,
+			"operatingProfitability": 36,
+			"netProfitability": 5,
+			"capitalStructureEfficiency": 82,
+			"costStructureEfficiency": 50,
+			"leverage": "Weak",
+			"liquidity": "Weak",
+			"earningsPerformance": "Weak"
+		},
+		{
+			"id": "2020Q3",
+			"href": "https://rridata.sandbox.rrilabs.co/v2.0/companies/KawjbGJ/ratings/2020Q3/",
+			"eqyYear": 2020,
+			"period": "Q3",
+			"financialDate": "2019-11-30",
+			"reportingPeriod": "2020-05-15",
+			"fhr": 28,
+			"chs": 32,
+			"probabilityDefault": 3.7449,
+			"termPd": {
+				"year2": 13.2,
+				"year3": 17.81,
+				"year4": 21.75,
+				"year5": 25.47,
+				"year6": 29.25,
+				"year7": 33.3,
+				"year8": 37.71,
+				"year9": 42.5,
+				"year10": 47.63
+			},
+    
+    ├── Periods (PROPS_ARRAY)
+    │   ├── Period ID
+    │   ├── EQY Year / Period / Financial Date
+    │   ├── Currency / Period URL
+    │   └── Financial statement fields
+    └── Ratings (PROPS_ARRAY)
+        ├── Period ID / EQY Year / Period
+        ├── Financial Date / Reporting Period / Rating URL
+        ├── FHR / CHS / Probability Default
+        ├── Term PD Year 2 through Year 10
+        ├── Delta / Simulated FHR / Simulated FHR Delta
+        ├── Profitability and efficiency metrics
+        └── Leverage / Liquidity / Earnings Performance
+Companies: https://rridata.sandbox.rrilabs.co/v2.0/companies/
+
+Portfolios: https://rridata.sandbox.rrilabs.co/v2.0/portfolios/
+
+Periods: https://rridata.sandbox.rrilabs.co/v2.0/companies/{rrid}/periods/
+
+Ratings: https://rridata.sandbox.rrilabs.co/v2.0/companies/{rrid}/ratings/
+
+Outreaches: https://api.sandbox.rrilabs.co/outreach-requests
+
+
+
+
+RapidRatings Integration – Solution Overview
+Program: Z2 Enterprise – Data Integrations
+Integration: RapidRatings
+Target DataModel: Existing Z2 Company DataModel 
+Source environment investigated: RapidRatings sandbox
+Document status: Proposed solution design based on the supplied API response samples and existing Company DataModel. Confirm open API-contract and platform-runtime questions before production rollout.
+
+Integration Authentication:
+
+In Z2 Data Integrations and customers can select which integrations they want to enable for their tenants
+
+RapidRatings Integrations to Z2 Data Integrations i have the client and screctId to authenticate the RapidRatings(Authentication: https://rridata.sandbox.rrilabs.co/v2.0/oauth/token/) to get the Bearer token as response to validate the token as exprire are not 
+
+once the token is validate call the necessary api to get the details
+Companies: https://rridata.sandbox.rrilabs.co/v2.0/companies/
+
+Portfolios: https://rridata.sandbox.rrilabs.co/v2.0/portfolios/
+
+Periods: https://rridata.sandbox.rrilabs.co/v2.0/companies/{rrid}/periods/
+
+Ratings: https://rridata.sandbox.rrilabs.co/v2.0/companies/{rrid}/ratings/
+
+Outreaches: https://api.sandbox.rrilabs.co/outreach-requests
+
+
+Schema:
+
+RapidRating companies properties and Periods and ratings how to map the thouse properties to Z2 company
+
+RapidRating company raw schema{
+Property DataType
+id	string
+name	string
+country	string
+ticker	string
+exchange	string
+sector	string
+href	uri
+financials	uri
+periods	uri
+ratings	uri
+latestRatings	array
+latestRatings[]	object
+latestRatings[].id	string
+latestRatings[].href	uri
+latestRatings[].eqyYear	integer
+latestRatings[].period	string
+latestRatings[].financialDate	date
+latestRatings[].reportingPeriod	date
+latestRatings[].fhr	integer
+latestRatings[].chs	integer
+latestRatings[].probabilityDefault	number
+latestRatings[].termPd	object
+latestRatings[].termPd.year2	number
+latestRatings[].termPd.year3	number
+latestRatings[].termPd.year4	number
+latestRatings[].termPd.year5	number
+latestRatings[].termPd.year6	number
+latestRatings[].termPd.year7	number
+latestRatings[].termPd.year8	number
+latestRatings[].termPd.year9	number
+latestRatings[].termPd.year10	number
+latestRatings[].delta	integer
+latestRatings[].simulatedFhr	integer
+latestRatings[].simulatedFhrDelta	integer
+latestRatings[].operatingProfitability	integer
+latestRatings[].netProfitability	integer
+latestRatings[].capitalStructureEfficiency	integer
+latestRatings[].costStructureEfficiency	integer
+latestRatings[].leverage	string
+latestRatings[].liquidity	string
+latestRatings[].earningsPerformance	string
+reportLinks	object
+reportLinks.fhr	uri
+reportLinks.financialDialog	uri
+reportLinks.peerBenchmark	uri
+address	string
+industryClassificationSystem	null
+industryClassificationCode	null
+currency	string
+dataScale	string
+dataConfidential	string
+externalSourceId	null
+externalSourceIds	array
+}
+
+and Periods raw Properties {
+Property DataType
+
+id	string
+href	uri
+eqyYear	integer
+period	string
+financialDate	date
+currency	string
+salesRevenue	number
+earningsBeforeInterestAndTax	number
+interestExpense	number
+interestReceived	number
+companyTaxExpense	number
+abnormalItems	number
+netProfitAfterTax	number
+bankCashBalances	number
+totalCurrentAssets	number
+fixedAssets	number
+financialAssets	null
+totalAssets	number
+debitOwnedWithinOneYear	number
+totalCurrentLiabilities	number
+termLoans	number
+totalLiabilities	number
+totalShareholderEquity	number
+cashFromOperationsFromCashFlow	null
+netInvestingCashFlow	number
+netFundingCashFlow	number
+
+}
+
+ratings raw properies{
+
+id	string
+href	uri
+eqyYear	integer
+period	string
+financialDate	date
+reportingPeriod	date
+fhr	integer
+chs	integer
+probabilityDefault	number
+termPd	object
+termPd.year2	number
+termPd.year3	number
+termPd.year4	number
+termPd.year5	number
+termPd.year6	number
+termPd.year7	number
+termPd.year8	number
+termPd.year9	number
+termPd.year10	number
+delta	integer
+simulatedFhr	integer
+simulatedFhrDelta	integer
+operatingProfitability	integer
+netProfitability	integer
+capitalStructureEfficiency	integer
+costStructureEfficiency	integer
+leverage	string
+liquidity	string
+earningsPerformance	string
+}
+
+this properies and company have the list of Periods and ratings
+
+
+Schema Mapping to Z2 Enterprise:
+
+Z2 have the company DataModel to Map the RapidRating company properies to as nested Group
+like this
+Z2 Company
+ ├── Basic Information (NESTED)
+ ├── Financial (NESTED)
+ │    ├── Moody's Credit Rating
+ │    └── D&B Rating
+ │
+ └── RapidRatings (NESTED)  ← NEW
+      │
+      ├── Periods (PROPS_ARRAY)
+      │          │
+      └── Ratings (PROPS_ARRAY)
+
+to build the Z2 Company objectType include as RapidRating company schema to total z2 company schema like this 
+and show the Comapany details include RapidRating company details and Periods list(PROPS_ARRAY) and Ratings list(PROPS_ARRAY)
+
+Syncing of Schema and Data:
+
+Manual and Scheduled Syncs:

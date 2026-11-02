@@ -1,0 +1,11 @@
+spring:
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/onboarding}
+    username: ${DATABASE_USERNAME:onboarding}
+    password: ${DATABASE_PASSWORD:}
+  h2:
+    console:
+      enabled: false
+  flyway:
+    # Set FLYWAY_LOCATIONS=classpath:db/migration to skip the sample data.
+    locations: ${FLYWAY_LOCATIONS:classpath:db/migration,classpath:db/sample}

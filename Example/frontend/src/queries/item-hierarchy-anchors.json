@@ -1,0 +1,17 @@
+{
+  "from": { "entity": "item", "alias": "item" },
+  "select": [
+    { "selectType": "property", "property": "item.item_number", "alias": "anchor" },
+    { "selectType": "property", "property": "item.id", "alias": "item__id" }
+  ],
+  "distinct": true,
+  "where": {
+    "and": [
+      { "topOfRelationship": "item_bom" },
+      { "filterType": "property", "property": "item.scope.id", "operator": "=", "value": 516 }
+    ]
+  },
+  "orderBy": [
+    { "property": "item.item_number", "direction": "asc" }
+  ]
+}

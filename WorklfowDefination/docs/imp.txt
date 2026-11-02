@@ -1,0 +1,565 @@
+# Project: Supply Chain Management — Item & Part Lifecycle Workflow Engine
+
+## 1. Project Objective
+
+Build a full-stack Supply Chain Management (SCM) application using **Java 17 or 21, Spring Boot, React, TypeScript, H2 database, and Camunda 8 workflow orchestration**.
+
+The application manages Items and their related Parts. Whenever an Item or its Parts are changed, the Item must go through a configurable lifecycle approval workflow before its status can become `APPROVED`.
+
+The application must have exactly three main navigation tabs:
+
+1. **Items**
+2. **Parts**
+3. **Workflow**
+
+The Workflow tab must contain the workflow definition management interface, including workflow definitions, lifecycle stages, approval rules, active workflow instances, and workflow execution history.
+
+Do not use Docker or Docker Compose. Use a locally runnable development environment.
+
+## 2. Technology Stack
+
+### Backend
+- Java 21 (Java 17 is acceptable if necessary)
+- Spring Boot 3.x
+- Spring Web
+- Spring Data JPA
+- Spring Validation
+- Spring Security if authentication is implemented
+- Camunda 8 workflow engine and BPMN 2.0
+- H2 in-memory database for local development
+- Maven
+- REST APIs
+- JUnit 5 and Spring Boot Test
+
+### Frontend
+- React
+- TypeScript
+- Vite
+- React Router
+- TanStack Query
+- React Hook Form
+- Zod validation
+- Tailwind CSS
+- A clean enterprise-style UI
+
+Use compatible, stable dependency versions. Do not mix incompatible Camunda 8 APIs or starter versions.
+
+### Runtime constraints
+- No Docker.
+- No Docker Compose.
+- H2 database only for this implementation.
+- Frontend runs locally using Vite.
+- Backend runs locally using Maven and Spring Boot.
+- Configure the Camunda 8 runtime explicitly for local development. Do not assume that the Camunda 8 engine is embedded in Spring Boot or that adding a dependency automatically starts the engine.
+- If a supported local Camunda 8 runtime is unavailable, provide a clearly separated development workflow adapter for testing. Do not falsely represent the mock adapter as a real Camunda engine.
+
+## 3. Main Navigation
+
+Create a responsive application shell with the following three tabs:
+
+### Tab 1: Items
+Display the Item list and manage Item records.
+
+### Tab 2: Parts
+Display all Part records and their associated Items.
+
+### Tab 3: Workflow
+Provide the workflow definition engine interface, lifecycle workflow configuration, approval tasks, running instances, and execution history.
+
+Do not add separate top-level tabs for Dashboard, Suppliers, Settings, or other modules. Related functionality should be implemented inside the three specified tabs.
+
+## 4. Data Model and Relationships
+
+### Item entity
+
+Create an `Item` entity with:
+
+- `id`: Long
+- `itemNumber`: String, unique, required
+- `name`: String, required
+- `description`: String
+- `lifecycleStatus`: Enum
+- `revision`: String
+- `createdAt`: LocalDateTime
+- `updatedAt`: LocalDateTime
+- `version`: Long, for optimistic locking
+
+Lifecycle status values:
+
+- `DRAFT`
+- `IN_REVIEW`
+- `APPROVED`
+- `REJECTED`
+- `CHANGE_PENDING`
+
+### Part entity
+
+Create a `Part` entity with:
+
+- `id`: Long
+- `partNumber`: String, unique, required
+- `name`: String, required
+- `description`: String
+- `partType`: String
+- `createdAt`: LocalDateTime
+- `updatedAt`: LocalDateTime
+- `version`: Long, for optimistic locking
+
+### Item-Part relationship
+
+Implement a many-to-many relationship between Items and Parts.
+
+One Item can contain multiple Parts, and one Part can be associated with multiple Items.
+
+Create an explicit join entity or join table with appropriate foreign keys and uniqueness constraints.
+
+Use an explicit relationship entity if relationship metadata such as quantity or position may be needed later.
+
+Example:
+
+- Item: `ITEM-1001`
+- Name: `Hydraulic Pump Assembly`
+- Parts: `PART-101`, `PART-102`, `PART-103`
+
+The Items page must display the associated Parts in the Item details view.
+
+## 5. Items Tab — UI Requirements
+
+Build an Items table with:
+
+- Item Number
+- Item Name
+- Revision
+- Number of Parts
+- Lifecycle Status
+- Updated At
+- Actions
+
+Provide the following actions:
+
+- Create Item
+- Edit Item
+- View Item Details
+- Add Parts
+- Remove Parts
+- Submit for Approval
+- View Workflow History
+
+### Item creation and editing
+
+When creating an Item, allow users to enter basic details and select associated Parts using a searchable multi-select dropdown.
+
+When editing an Item, show the currently associated Parts in the same dropdown.
+
+Users must be able to add or remove Parts from the selection.
+
+Example:
+
+Item: Hydraulic Pump Assembly
+
+Selected Parts:
+- Shaft
+- Bearing
+- Housing
+
+### Lifecycle rules
+
+A new Item starts in `DRAFT`.
+
+When the user modifies an existing Item or changes its Part relationships, mark the Item as requiring lifecycle review.
+
+If the Item is already approved, set its status to `CHANGE_PENDING` when a relevant change is made.
+
+Do not allow a modified Item to continue appearing as the current approved revision.
+
+Preserve the last approved revision or approved snapshot until the new revision is approved.
+
+When the user submits the changes, start the configured lifecycle workflow and set the applicable revision or change request to `IN_REVIEW`.
+
+The Item must not become `APPROVED` merely because the user edited or saved the form.
+
+## 6. Parts Tab — UI Requirements
+
+Display a Parts table with:
+
+- Part Number
+- Part Name
+- Part Type
+- Associated Items Count
+- Created At
+- Actions
+
+Provide:
+
+- Create Part
+- Edit Part
+- View Part Details
+- View Associated Items
+
+When opening Part Details, display a list of Items associated with that Part.
+
+Use a searchable dropdown to select Items when associating a Part with an Item.
+
+When a Part is added to or removed from an approved Item, create a lifecycle change request for that Item.
+
+If a Part is shared by multiple Items, only the affected Items should receive lifecycle change requests.
+
+Do not automatically approve any affected Item.
+
+## 7. Workflow Tab — Workflow Definition Engine
+
+The Workflow tab is a core feature, not just a workflow history screen.
+
+Implement the following sections inside the Workflow tab:
+
+### A. Workflow Definitions
+
+Display a table with:
+
+- Workflow Name
+- Workflow Key
+- Version
+- Workflow Type
+- Status
+- Last Updated
+- Actions
+
+Actions:
+
+- Create Workflow
+- Edit Workflow
+- View Definition
+- Publish Workflow
+- Activate or Deactivate
+- View Instances
+- View Version History
+
+Example workflow definitions:
+
+- `ITEM_LIFECYCLE_APPROVAL`
+- `ITEM_PART_CHANGE_APPROVAL`
+- `ITEM_REVISION_RELEASE`
+
+### B. Workflow Definition Designer
+
+Provide a visual, configurable workflow designer for defining lifecycle stages and transitions.
+
+Use a BPMN 2.0-compatible designer, such as bpmn-js, where feasible.
+
+Allow users to define:
+
+- Start event
+- Validation service task
+- Manager approval task
+- Engineering approval task
+- Conditional gateway
+- Rejection path
+- Revision release task
+- End event
+
+Example process:
+
+Start
+→ Validate Item
+→ Validate Part Relationships
+→ Engineering Approval
+→ Manager Approval (when required)
+→ Release Approved Revision
+→ End
+
+Rejection path:
+
+Approval Rejected
+→ Record Rejection Reason
+→ Return to Draft or Change Pending
+→ End
+
+A user must be able to configure approval requirements and conditional transitions rather than hardcoding every process into the React frontend.
+
+### C. Lifecycle State Configuration
+
+Configure permitted lifecycle transitions.
+
+Example:
+
+- `DRAFT` → `IN_REVIEW`
+- `IN_REVIEW` → `APPROVED`
+- `IN_REVIEW` → `REJECTED`
+- `REJECTED` → `DRAFT`
+- `APPROVED` → `CHANGE_PENDING`
+- `CHANGE_PENDING` → `IN_REVIEW`
+
+Only valid transitions may be executed.
+
+Lifecycle state configuration and BPMN workflow execution are related but distinct. Enforce lifecycle transition rules in the backend as well as in the workflow process.
+
+### D. Approval Tasks
+
+Display a task inbox with:
+
+- Task Name
+- Item Number
+- Item Name
+- Workflow Instance ID
+- Assigned User or Role
+- Current Approval Stage
+- Created At
+- Due Date, if configured
+- Actions
+
+Actions:
+
+- Approve
+- Reject
+- View Item Changes
+- View Parts Changes
+- View Workflow History
+
+Require a rejection reason when rejecting a request.
+
+Enforce authorization on the backend so only authorized users can complete approval tasks.
+
+### E. Running Workflow Instances
+
+Display active workflows with:
+
+- Workflow Instance ID
+- Workflow Definition
+- Business Key
+- Item Number
+- Current Stage
+- Status
+- Started At
+- Last Updated
+
+Allow authorized users to view execution details and audit history.
+
+Do not allow users to bypass required approval stages by directly changing the Item status.
+
+### F. Workflow History
+
+Track:
+
+- Workflow started
+- Item submitted
+- Parts added or removed
+- Approval requested
+- Approval completed
+- Request rejected
+- Revision released
+- Workflow failed
+
+Store actor, timestamp, action, business key, workflow instance ID, and relevant change summary.
+
+## 8. Camunda 8 Integration
+
+Use Camunda 8 as the actual workflow orchestration engine.
+
+Implement a clear integration boundary:
+
+- `WorkflowService`
+- `WorkflowDefinitionService`
+- `WorkflowInstanceService`
+- `WorkflowTaskService`
+- `CamundaWorkflowAdapter`
+- `WorkflowWorker` components
+
+Use the supported Camunda 8 APIs and deployment model for the selected version.
+
+The backend must:
+
+1. Deploy or publish BPMN workflow definitions.
+2. Start a process instance using the selected workflow definition.
+3. Pass the Item ID, change request ID, actor, and business key as process variables.
+4. Execute validation and revision-release work through service workers.
+5. Handle approval tasks and completion.
+6. Persist business audit events in H2.
+7. Reflect workflow execution status in the UI.
+8. Handle retries and workflow incidents.
+9. Prevent duplicate workflow starts for the same submitted change request.
+10. Reconcile workflow completion with the application's lifecycle state.
+
+Use a stable business key, such as the Item ID plus a unique change request ID.
+
+### Important lifecycle consistency rule
+
+The workflow engine coordinates the approval process, but the backend must own the authoritative lifecycle state transition.
+
+Only the successful completion of all required approval stages may trigger the approved revision release.
+
+Use optimistic locking, idempotent workers, and transactional business updates to prevent concurrent or duplicate approvals.
+
+Do not use a direct SQL update or an unrestricted REST endpoint to mark an Item as approved.
+
+## 9. H2 Database Configuration
+
+Configure an H2 in-memory database for local development.
+
+Use Spring Data JPA and schema initialization or migrations.
+
+Suggested settings:
+
+- Database URL: `jdbc:h2:mem:scmdb`
+- Driver: `org.h2.Driver`
+- Username: `sa`
+- Password: empty for local development
+- H2 Console enabled only for local development
+
+Use DTOs instead of returning JPA entities directly from controllers.
+
+Store the application business data in H2. Do not assume Camunda 8 execution state is automatically stored in the same H2 database.
+
+If the selected Camunda 8 runtime requires its own persistence services or external infrastructure, document that requirement and provide a compatible local development setup.
+
+No Docker-based instructions or hidden container dependencies are allowed.
+
+## 10. REST API Design
+
+### Items
+
+- `GET /api/items`
+- `GET /api/items/{id}`
+- `POST /api/items`
+- `PUT /api/items/{id}`
+- `GET /api/items/{id}/parts`
+- `PUT /api/items/{id}/parts`
+- `POST /api/items/{id}/submit-for-approval`
+- `GET /api/items/{id}/workflow-history`
+
+### Parts
+
+- `GET /api/parts`
+- `GET /api/parts/{id}`
+- `POST /api/parts`
+- `PUT /api/parts/{id}`
+- `GET /api/parts/{id}/items`
+
+### Workflow definitions
+
+- `GET /api/workflows/definitions`
+- `GET /api/workflows/definitions/{key}`
+- `POST /api/workflows/definitions`
+- `POST /api/workflows/definitions/{key}/publish`
+- `GET /api/workflows/definitions/{key}/versions`
+
+### Workflow instances and tasks
+
+- `POST /api/workflows/instances`
+- `GET /api/workflows/instances`
+- `GET /api/workflows/instances/{id}`
+- `GET /api/workflows/tasks`
+- `POST /api/workflows/tasks/{taskId}/approve`
+- `POST /api/workflows/tasks/{taskId}/reject`
+- `GET /api/workflows/instances/{id}/history`
+
+Implement proper HTTP status codes, validation, pagination, and structured error responses.
+
+Do not expose Camunda administrative credentials or unrestricted engine APIs to the browser.
+
+## 11. React UI Design
+
+Build a professional enterprise application.
+
+### Main navigation
+
+Items | Parts | Workflow
+
+### Items interface
+
+- Searchable and sortable table
+- Lifecycle status badges
+- Create/Edit Item dialog or page
+- Searchable Parts multi-select dropdown
+- Item details view with related Parts
+- Submit for Approval action
+- Workflow history panel
+
+### Parts interface
+
+- Searchable and sortable table
+- Create/Edit Part form
+- Related Items list
+- Item association selector
+
+### Workflow interface
+
+Use internal tabs or sections for:
+
+- Definitions
+- Designer
+- Approval Tasks
+- Running Instances
+- History
+
+Include loading, empty, error, and success states.
+
+Display the currently published workflow version used by each running process.
+
+Use reusable components, typed API clients, and React Query for server-state management.
+
+## 12. Example End-to-End Business Scenario
+
+1. Create Item `ITEM-1001`, named `Hydraulic Pump Assembly`.
+2. Select Parts `PART-101`, `PART-102`, and `PART-103` using the dropdown.
+3. Save the Item as `DRAFT`.
+4. Open the Workflow tab and publish `ITEM_LIFECYCLE_APPROVAL`.
+5. Submit the Item for approval.
+6. Camunda 8 starts a workflow instance.
+7. The workflow validates the Item and its Part relationships.
+8. The Engineering Approver reviews the change.
+9. The Manager approves if required by the workflow definition.
+10. The revision-release worker checks that all required approvals are complete.
+11. The backend releases the approved revision and sets the lifecycle status to `APPROVED`.
+12. The Items tab shows the approved status and the associated Parts.
+13. Workflow History shows each transition, actor, timestamp, and decision.
+
+Now edit the approved Item and remove `PART-103`.
+
+14. The backend creates a new change request and marks the change as pending.
+15. The previously approved revision remains available as the last approved revision.
+16. Submit the new change request for approval.
+17. The workflow executes again.
+18. The Item becomes `APPROVED` for the new revision only after all required approvals succeed.
+
+## 13. Testing Requirements
+
+Write automated tests for:
+
+- Item creation and validation
+- Part creation and validation
+- Item-Part relationship updates
+- Approved Item change detection
+- Lifecycle transition restrictions
+- Workflow start and duplicate submission prevention
+- Approval and rejection paths
+- Rejection reason validation
+- Authorized task completion
+- Failed worker retry behavior
+- Concurrent lifecycle updates
+- Approved revision preservation
+- BPMN definition validation
+- REST API integration tests
+- React component and workflow UI tests
+
+Provide a development test adapter for business logic tests if the real Camunda 8 runtime cannot run locally without additional infrastructure. Keep adapter behavior separate from the real engine integration.
+
+## 14. Expected Deliverables
+
+Generate a complete, runnable project with:
+
+1. Backend source code and Maven configuration.
+2. Frontend source code and Vite configuration.
+3. H2 database configuration and seed data.
+4. BPMN workflow definitions.
+5. Workflow definition and execution integration.
+6. Item and Part CRUD with relationship management.
+7. Lifecycle approval and revision control.
+8. React UI with exactly three top-level navigation tabs.
+9. API documentation and example requests.
+10. Unit and integration tests.
+11. A README with exact local startup commands and environment requirements.
+12. An architecture diagram and end-to-end execution explanation.
+
+Do not generate only pseudocode, isolated examples, or a static mock UI. Implement the core functionality end to end.
+
+Before coding, verify the compatibility of the selected Camunda 8 runtime, Spring Boot version, Java version, and local execution requirements. If a requested runtime constraint is incompatible with a real Camunda 8 deployment, explain the conflict and implement a clearly labeled development alternative without misrepresenting it as production Camunda execution.

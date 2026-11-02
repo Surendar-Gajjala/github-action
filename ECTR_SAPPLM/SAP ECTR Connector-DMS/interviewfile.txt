@@ -1,0 +1,338 @@
+==========================================================================================
+ INTERVIEW NOTES - IMPORTANT IMPLEMENTATION POINTS AND PROJECT FLOW
+ Custom ECTR-Connector Framework and External Java Web Services (SAP DMS)
+==========================================================================================
+
+How to use this file
+  Section 1   the project in 30 seconds (your "tell me about your project" answer)
+  Section 2   end-to-end flow (draw this on the whiteboard)
+  Section 3   the most important implementation points (what YOU built and why)
+  Section 4   SAP concepts you must explain clearly
+  Section 5   error handling, timeouts, monitoring
+  Section 6   testing and deployment
+  Section 7   likely interview questions with short answers
+  Section 8   honest limits (what is mock / not built / must be checked in SAP)
+
+Tags used:  [VERIFIED] built and tested   [MOCK] simulated   [CHECK-SAP] verify in SE37/customizing
+
+
+------------------------------------------------------------------------------------------
+1. THE PROJECT IN 30 SECONDS
+------------------------------------------------------------------------------------------
+
+  "I built a Spring Boot 3 / Java 17 integration service that sits between CAD applications
+   (through an ECTR-side connector) and SAP Document Management (DMS). The CAD side sends
+   document metadata and PDF/DXF files over REST. The service validates them, creates the
+   Document Info Record in SAP with BAPI_DOCUMENT_CREATE2 through SAP JCo, commits it with
+   BAPI_TRANSACTION_COMMIT in the same stateful session, stores and streams the PDF/DXF
+   visualization files to downstream applications, and tracks every request as a transaction
+   with states, timeouts, idempotency keys and correlation ids. Errors come back as
+   structured problem+json responses that include the real SAP RETURN messages. The whole
+   service runs and is tested without SAP, using a mock RFC backend behind an interface."
+
+  Key numbers:  Spring Boot 3.3.5, Java 17, 38 automated tests, 6 REST endpoints + health.
+
+
+------------------------------------------------------------------------------------------
+2. END-TO-END FLOW
+------------------------------------------------------------------------------------------
+
+2.1  System chain
+
+   CAD tool  -->  ECTR / custom connector  --HTTP/JSON-->  Spring Boot service  --RFC (JCo)-->  SAP DMS
+   (CATIA,         (the CALLER of our API)   multipart     "ectr-dms-connector"                 (ECC/S4)
+    SolidWorks)                                                  |
+                                                                 +--> disk: PDF/DXF originals
+                                                                 <--  downstream apps download PDF/DXF
+
+2.2  Layers inside the service (top to bottom)
+
+   CorrelationIdFilter     -> X-Correlation-Id into logging MDC
+   DocumentController      -> @Valid request DTO, Idempotency-Key header, DTO -> domain
+   DocumentService         -> idempotency, bounded thread pool, timeout, transaction states
+   SapDocumentGateway      -> BAPI orchestration: CREATE2 -> check RETURN -> COMMIT or ROLLBACK
+   DocumentBapiMapper      -> domain object -> neutral RfcCall (function name + parameters)
+   RfcClient (interface)   -> MockRfcClient (default)  OR  JcoRfcClient (profile "jco")
+   SAP JCo -> RFC -> BAPI in SAP
+
+2.3  Flow 1: create a document   POST /api/v1/documents
+
+   Step 1  Filter reads or creates the correlation id.
+   Step 2  Controller validates the JSON (400 if invalid).
+   Step 3  Service checks Idempotency-Key. Seen before -> return the old result, NO SAP call.
+           Otherwise create a transaction: state RECEIVED.
+   Step 4  Work is submitted to the "sap-*" thread pool (pool full -> 503).
+           The HTTP thread waits at most app.sap.call-timeout (30s).
+   Step 5  Gateway opens ONE stateful SAP session:
+             SAP_CALL_STARTED
+             call BAPI_DOCUMENT_CREATE2
+             read RETURN (BAPIRET2): TYPE E or A?
+               yes -> BAPI_TRANSACTION_ROLLBACK -> REJECTED_BY_SAP -> HTTP 422
+               no  -> SAP_DOCUMENT_CREATED   (still NOT saved in the database!)
+             call BAPI_TRANSACTION_COMMIT with WAIT='X'
+             check the commit RETURN -> COMMITTED
+   Step 6  Response 201 Created + Location: /api/v1/documents/DRW/10000001/000/00
+
+2.4  Flow 2: upload the PDF/DXF original   POST .../{type}/{number}/{part}/{version}/originals
+
+   Step 1  Check the document exists in SAP (BAPI_DOCUMENT_GETDETAIL2) -> 404 if not.
+   Step 2  Detect the real file type from the content (magic bytes), not the header -> 415 if wrong.
+   Step 3  Stream to a temp file while computing SHA-256, then atomic move. File id = random UUID.
+   Step 4  Response 201 with fileId, sha256, downloadUrl, sapCheckin=STORED_IN_MIDDLEWARE_ONLY.
+
+2.5  Flow 3: downstream download   GET .../originals/{fileId}
+
+   Streamed from disk (FileSystemResource, never fully in memory).
+   Content-Type from detected kind, ETag = SHA-256, Range / 206 partial content supported.
+
+2.6  Flow 4: check status later   GET /api/v1/transactions/{id}
+
+   Returns state, finished flag, document key, SAP messages and full state history with times.
+
+2.7  Transaction state machine
+
+   RECEIVED -> SAP_CALL_STARTED -> SAP_DOCUMENT_CREATED -> COMMITTED
+                     |
+                     +-> REJECTED_BY_SAP          (RETURN E/A, rolled back)        HTTP 422
+                     +-> COMMUNICATION_FAILED     (SAP down, logon error)          HTTP 503
+                     +-> TIMEOUT_OUTCOME_UNKNOWN  (later replaced by real result)  HTTP 504
+                     +-> FAILED                   (unexpected Java error)          HTTP 500
+
+
+------------------------------------------------------------------------------------------
+3. MOST IMPORTANT IMPLEMENTATION POINTS
+------------------------------------------------------------------------------------------
+
+ P1  Ports-and-adapters around SAP.                                            [VERIFIED]
+     Business logic never imports JCo. It builds a neutral RfcCall (function name, imports,
+     tables) and runs it through the RfcClient interface. Two implementations:
+       MockRfcClient   @Profile("!jco")  - in-memory fake SAP, default
+       JcoRfcClient    @Profile("jco")   - real SAP through JCo
+     Benefit: full test suite runs without SAP; JcoRfcClient is generic, so a new BAPI needs
+     NO change in the JCo code.
+
+ P2  BAPI + COMMIT in ONE stateful session.                                    [VERIFIED]
+     BAPIs do not commit by themselves. CREATE2 only prepares the update. Without
+     BAPI_TRANSACTION_COMMIT in the SAME session (JCoContext.begin/end) nothing is saved.
+     WAIT='X' makes the commit wait until the update task is finished.
+
+ P3  Always check RETURN (BAPIRET2).                                           [VERIFIED]
+     A BAPI usually does not throw an exception on business errors; it returns messages.
+     TYPE E or A = error -> ROLLBACK and HTTP 422 with the SAP messages.
+     S, W, I = not an error.
+
+ P4  All SAP names in one class: BapiNames.                                    [CHECK-SAP]
+     BAPI_DOCUMENT_CREATE2, BAPI_DOCUMENT_GETDETAIL2, BAPI_TRANSACTION_COMMIT/ROLLBACK,
+     DOCUMENTDATA, DOCUMENTDESCRIPTIONS, OBJECTLINKS, RETURN, WAIT, key fields.
+     One place to compare with SE37 on the target system before go-live.
+
+ P5  Timeout does NOT cancel the SAP call.                                     [VERIFIED]
+     A running RFC cannot be safely aborted from Java. On timeout the caller gets 504 +
+     transactionId; the call keeps running and whenComplete() still records the real final
+     state. The caller polls GET /transactions/{id} instead of retrying blindly.
+
+ P6  Idempotency-Key prevents duplicate documents.                             [VERIFIED]
+     Same key again -> same transaction returned, no second SAP call (200 replay,
+     202 if still running). Critical when a client retries after a 504.
+
+ P7  Bounded thread pool.                                                      [VERIFIED]
+     ExecutorConfig: worker-threads 4, queue 50, then 503. Protects SAP from overload.
+     TaskDecorator copies the MDC so the correlation id appears in worker-thread logs.
+     Rule: app.sap.worker-threads (4) <= sap.jco.peak-limit (10).
+
+ P8  Secure JCo configuration.                                                 [VERIFIED design]
+     Own DestinationDataProvider (SpringDestinationDataProvider) feeds JCo from Spring config.
+     Values come only from environment variables: SAP_ASHOST, SAP_SYSNR, SAP_CLIENT,
+     SAP_USER, SAP_PASSWORD, SAP_LANG. No .jcoDestination file with a clear-text password.
+     JcoProperties is @Validated (fails fast if missing) and masks the password in toString().
+
+ P9  Safe file handling.                                                       [VERIFIED]
+     - type detected by content:  PDF "%PDF-",  binary DXF "AutoCAD Binary DXF",
+       ASCII DXF group code 0 + "SECTION";  extension must match
+     - streamed to temp file, SHA-256 on the fly, atomic move
+     - stored under a random UUID -> client file names never used as paths (no path traversal)
+     - multipart limit 50MB -> 413
+
+ P10 One error model: RFC 9457 problem+json.                                   [VERIFIED]
+     Services throw IntegrationException with a Kind; GlobalExceptionHandler maps it:
+       400 validation | 404 not found | 413 too large | 415 bad file
+       422 SAP rejected | 503 SAP unavailable | 504 timeout | 500 internal
+     Body contains type, status, detail, correlationId, transactionId, errors[]/sapMessages[].
+
+ P11 Safe logging and observability.                                           [VERIFIED]
+     Correlation id in every log line (%X{correlationId}), no passwords or file content logged.
+     /actuator/health shows "sap": UP/DOWN via ping, without connection details.
+
+ P12 JCo kept out of the default build.                                        [VERIFIED]
+     sapjco3.jar is SAP-licensed. It is only used with Maven profile -Pjco as "provided";
+     JCo code lives in src/jco/java. JCo refuses renamed jars, so it is loaded at runtime
+     with -Dloader.path, and the native lib with -Djava.library.path.
+
+
+------------------------------------------------------------------------------------------
+4. SAP CONCEPTS YOU MUST EXPLAIN CLEARLY
+------------------------------------------------------------------------------------------
+
+  ECTR   Engineering Control Center: desktop integration of CAD tools with SAP PLM.
+         In this project the ECTR-side connector is the CALLER of our REST API.
+  DMS    SAP Document Management. Stores Document Info Records (DIR).
+  RFC    Remote Function Call: SAP protocol to call ABAP function modules remotely.
+  BAPI   Released, RFC-enabled function module with a stable interface.
+         Errors in RETURN, NO automatic commit.
+  JCo    SAP Java Connector: Java library that speaks RFC. Connection pool + function
+         metadata repository (reads parameter structure from SAP at runtime).
+
+  The four things to keep apart (very common interview question):
+    Document key       type/number/part/version = DOKAR/DOKNR/DOKTL/DOKVR, e.g. DRW/10000001/000/00
+                       identifies ONE document version
+    Document metadata  description, texts per language, status, laboratory, object links
+                       -> stored in the DIR, created by BAPI_DOCUMENT_CREATE2
+    Original file      the actual PDF/DXF/CAD file (content), stored in a vault/content server,
+                       only REFERENCED by the DIR
+    Document version   00, 01, ... a new version = a new DIR with its own metadata and originals.
+                       Uploading a corrected PDF is NOT a new version.
+
+  Metadata creation vs original check-in = TWO different operations.
+  After CREATE2 + COMMIT the DIR exists even if no file was ever checked in.
+
+  Check-in options for originals (decide with SAP DMS/basis team)              [CHECK-SAP]
+    a) files in CREATE2 (DOCUMENTFILES) or BAPI_DOCUMENT_CHECKIN2, path readable by the
+       SAP application server, with a storage category
+    b) upload to SAP Content Server over HTTP, then link to the DIR
+    c) ECTR/CAD client checks in the native file; middleware handles metadata + PDF/DXF
+  In this project the file is stored in the middleware only (STORED_IN_MIDDLEWARE_ONLY).
+
+  What needs SAP configuration / authorization                                 [CHECK-SAP]
+    RFC logon             RFC user (System/Communication), S_RFC, network, SNC
+    CREATE2               document type in DC10, number range, field selection, status network,
+                          DMS authorization objects (e.g. C_DRAW_TCD / C_DRAW_DOK)
+    OBJECTLINKS           link type allowed for the document type, linked object must exist
+    DESCRIPTIONS          language installed
+    GETDETAIL2            display authorization
+    Original check-in     storage category / content server (KPro), workstation application DC30
+  Debugging authorizations:  SU53 (last failed check), ST01 / STAUTHTRACE.
+
+
+------------------------------------------------------------------------------------------
+5. ERROR HANDLING, TIMEOUTS, MONITORING (SUMMARY TABLE)
+------------------------------------------------------------------------------------------
+
+  Situation                         Detected where                 Result
+  --------------------------------  -----------------------------  ------------------------------
+  Invalid JSON / field length       Bean Validation (controller)   400, errors[]
+  SAP RETURN type E/A               SapDocumentGateway             ROLLBACK, 422, sapMessages[]
+  AbapException from JCo            JcoRfcClient                   SapBusinessException -> 422
+  SAP down / logon failure          JcoRfcClient (JCoException)    SapCommunicationException -> 503
+  Thread pool + queue full          DocumentService                503
+  SAP slower than call-timeout      DocumentService                504 + transactionId, poll later
+  Document not in SAP               GETDETAIL2                     404
+  Wrong file type / too large       FileTypeDetector / multipart   415 / 413
+  Unexpected Java error             GlobalExceptionHandler         500 (no stack trace to client)
+
+
+------------------------------------------------------------------------------------------
+6. TESTING AND DEPLOYMENT
+------------------------------------------------------------------------------------------
+
+  Tests (38, run with .\mvnw.cmd verify)
+    DocumentBapiMapperTest      mapping, blank fields skipped, WAIT='X'
+    BapiReturnTest              E/A detection, empty RETURN, table parsing
+    SapDocumentGatewayTest      CREATE2->COMMIT, error->ROLLBACK, no commit = nothing saved
+    DocumentServiceTest         state history, 422/503, timeout then late COMMITTED, idempotency
+    FileHandlingTest            PDF/DXF detection, SHA-256, path traversal
+    DocumentApiIntegrationTest  full HTTP: 201/400/404/415/422, Location, replay, upload/download
+
+  Local testing with mock SAP                                                  [MOCK]
+    mock.sap.latency=40s + app.sap.call-timeout=2s  -> 504, then COMMITTED in history
+    mock.sap.fail-communication=true                -> 503, health DOWN
+    documentType "ZZZ"                              -> 422 with mock SAP messages
+
+  Real SAP deployment
+    1. mvnw install:install-file for sapjco3.jar, then mvnw -Pjco package
+    2. compare BapiNames with SE37
+    3. set SAP_* environment variables
+    4. java -Dloader.path=C:/sapjco -Djava.library.path=C:/sapjco -jar target/...jar
+            --spring.profiles.active=jco
+    5. sandbox test: health UP, create -> verify in CV03N, bad type -> 422
+
+  Common problems
+    UnsatisfiedLinkError sapjco3          -> java.library.path, 64-bit lib for 64-bit JVM
+    Illegal JCo archive                   -> never rename/repackage sapjco3.jar
+    Function not found / not RFC-enabled  -> wrong name or missing S_RFC
+    422 from SAP                          -> data or DMS customizing (DC10, field selection)
+    duplicate after retry                 -> send Idempotency-Key, poll transaction
+
+
+------------------------------------------------------------------------------------------
+7. LIKELY INTERVIEW QUESTIONS - SHORT ANSWERS
+------------------------------------------------------------------------------------------
+
+ Q: Why Spring Boot as the integration layer instead of calling SAP from the CAD side?
+ A: Central place for validation, security, timeouts, retries, logging and monitoring. CAD
+    clients stay simple (HTTP/JSON), SAP credentials stay on the server, one JCo connection
+    pool protects SAP, and any language/tool can call REST.
+
+ Q: Why does the document not appear in SAP after BAPI_DOCUMENT_CREATE2?
+ A: BAPIs do not commit. You must call BAPI_TRANSACTION_COMMIT in the same stateful session
+    (JCoContext.begin/end). Otherwise the work is lost when the connection is returned.
+
+ Q: How do you know a BAPI failed?
+ A: Read the RETURN parameter (BAPIRET2). TYPE E or A means error -> rollback.
+    JCo exceptions are for technical or ABAP exceptions, not normal business errors.
+
+ Q: What is JCoContext.begin/end for?
+ A: It binds the same SAP connection/session to the thread for several calls, so CREATE2 and
+    COMMIT run in one logical unit of work.
+
+ Q: What happens if SAP is slow and your timeout expires?
+ A: 504 with the transactionId, state TIMEOUT_OUTCOME_UNKNOWN. The RFC keeps running and
+    its real result is recorded later. Client polls the transaction; Idempotency-Key stops
+    a duplicate on retry.
+
+ Q: How did you configure JCo securely?
+ A: Custom DestinationDataProvider fed from Spring properties, filled by environment
+    variables / secret store; no .jcoDestination file; validated at startup; password masked.
+    SNC for encrypted RFC in production.
+
+ Q: Difference between document metadata and the original file?
+ A: Metadata (DIR) = key, description, status, links - created by CREATE2. Original = the
+    file content in a vault/content server, linked to the DIR, checked in separately.
+
+ Q: How do you test without an SAP system?
+ A: RfcClient interface with a mock implementation selected by Spring profile. Same gateway,
+    mapper and service code run in tests; the mock can simulate latency, errors and outages.
+
+ Q: How do you handle large PDF/DXF files?
+ A: Stream upload to disk with SHA-256 on the fly, stream download with FileSystemResource,
+    Range/206 support, ETag = checksum, size limits, content-based type detection.
+
+ Q: How would you add another BAPI (e.g. change a document)?
+ A: Check the interface in SE37 -> add names to BapiNames -> mapper method -> gateway
+    orchestration in one session with COMMIT/ROLLBACK -> teach the mock -> service with
+    timeout -> controller + DTO -> tests -> sandbox test. JcoRfcClient needs no change.
+
+ Q: How do you trace one request across systems?
+ A: X-Correlation-Id header -> MDC -> every log line (also worker threads via TaskDecorator)
+    -> echoed in the response and in problem+json errors. Plus the transaction id/history.
+
+ Q: How would you make it production-ready?
+ A: Spring Security (OAuth2/mTLS) + TLS, DB-backed transaction monitor and file index,
+    reconciliation job for TIMEOUT_OUTCOME_UNKNOWN, shared/object storage, virus scan,
+    Micrometer metrics and alerts, secrets from a vault, a queue (JMS/Kafka) for high volume.
+
+
+------------------------------------------------------------------------------------------
+8. HONEST LIMITS (SAY THESE IF ASKED - IT SHOWS UNDERSTANDING)
+------------------------------------------------------------------------------------------
+
+  - The mock SAP backend uses invented message ids and numbers.                [MOCK]
+  - The JCo adapter (src/jco/java) is not compiled in the default build because
+    sapjco3.jar is licensed by SAP.
+  - BAPI parameter and field names must be compared with SE37 on the target release.
+  - Original check-in into SAP (content server / CHECKIN2) is not implemented; files are
+    stored in the middleware only, pending a decision with the SAP DMS/basis team.
+  - No SAP ECTR-Connector framework API is used; we only assume the ECTR-side connector
+    can make HTTP calls. Its exact API must come from SAP ECTR documentation.
+  - Transaction monitor and file index are in memory (single instance); production needs a DB.
+  - The sample has no authentication yet.
+==========================================================================================

@@ -1,0 +1,32 @@
+server:
+  port: ${SERVER_PORT:8080}
+
+spring:
+  application:
+    name: plm-integration-demo
+
+logging:
+  pattern:
+    console: "%d{HH:mm:ss.SSS} %-5level [%X{correlationId:-no-corr}] %logger{36} - %msg%n"
+
+integration:
+  sap:
+    # mock = in-memory MockSapBomGateway (default, no SAP needed)
+    # real = RealSapBomGatewayPlaceholder (not implemented; fails every call until you implement it)
+    mode: ${SAP_MODE:mock}
+    mock:
+      # NONE | TRANSIENT_ONCE | ALWAYS_TRANSIENT | PERMANENT
+      failure-mode: ${SAP_MOCK_FAILURE_MODE:NONE}
+    real:
+      # Values come ONLY from environment variables / a secrets manager. Never commit real values.
+      base-url: ${SAP_BASE_URL:}
+      client: ${SAP_CLIENT:}
+      username: ${SAP_USERNAME:}
+      password: ${SAP_PASSWORD:}
+  retry:
+    max-attempts: ${TRANSFER_MAX_ATTEMPTS:3}
+    backoff-millis: ${TRANSFER_BACKOFF_MILLIS:500}
+  mapping:
+    # Demo defaults applied by BomMapper. Agree the real values with your SAP team.
+    bom-usage: ${SAP_BOM_USAGE:1}
+    default-unit: ${SAP_DEFAULT_UNIT:PC}

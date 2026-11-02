@@ -1,0 +1,2319 @@
+{
+  "info": {
+    "name": "RapidRatings API (Sandbox)",
+    "_postman_id": "8d0b1c55-3d7e-4d5a-9c1e-5a7e1d0c2f01",
+    "description": "# RapidRatings API: Sandbox\n\nData Integrations project, integration #1. Every request was verified live against the sandbox on **2026-10-28**. Saved example responses are real (trimmed) unless marked *from OpenAPI spec*.\n\n## Setup\n1. Import this collection and **RapidRatings-Sandbox.postman_environment.json**.\n2. Select the environment and fill in `client_id` and `client_secret` (from the project `.env`: `RR_CLIENT_ID`, `RR_CLIENT_SECRET`).\n3. Send any request. The collection pre-request script fetches and caches the token automatically (or run **Auth › Get Access Token** first).\n\n## Authentication\nOAuth 2.0 **client credentials**. `POST {{token_url}}` with HTTP Basic `client_id:client_secret` and body `grant_type=client_credentials` returns `{access_token, token_type: \"Bearer\", expires_in: 1800, scope}`. **No refresh token**: request a new token after 30 minutes. All other requests use `Authorization: Bearer {{access_token}}` (inherited from the collection). The same token works on both hosts.\n\n## Hosts\n| Variable | Host | APIs |\n|---|---|---|\n| `{{data_api_url}}` | rridata.sandbox.rrilabs.co/v2.0 | token, companies, portfolios, periods, ratings |\n| `{{outreach_api_url}}` | api.sandbox.rrilabs.co | outreach requests |\n\n## Behaviour (verified)\n| | rridata | outreach |\n|---|---|---|\n| Paging | `page` + `next` URL; companies 20, periods/ratings 10 per page (fixed) | `limit` + `cursor` (`next_cursor`) |\n| Page past end | companies 404, portfolios/periods/ratings **500** | n/a |\n| Unknown query param | 400 | 400 |\n| Invalid/expired token | **403** `Not Authorized.` | **401** |\n| Error body | `{\"Request\": {\"message\", \"info\"}}` | RFC 7807 `{type,title,status,detail}` |\n| Trailing slash | **required** | optional |\n\n⚠️ **Outreach › Create Outreach Request sends real emails** to the counterparty contact. Don't run it casually.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Auto-auth: obtains a client-credentials token when missing or within 60s of expiry.",
+          "// Tokens last 1800s and RapidRatings issues no refresh token, so renewal = a new token request.",
+          "if (pm.info.requestName === 'Get Access Token') return;",
+          "const token = pm.collectionVariables.get('access_token');",
+          "const expiresAt = Number(pm.collectionVariables.get('token_expires_at') || 0);",
+          "if (token && Date.now() < expiresAt - 60000) return;",
+          "const id = pm.variables.get('client_id');",
+          "const secret = pm.variables.get('client_secret');",
+          "if (!id || !secret) { console.warn('Set client_id and client_secret in the environment.'); return; }",
+          "const basic = CryptoJS.enc.Base64.stringify(CryptoJS.enc.Utf8.parse(id + ':' + secret));",
+          "pm.sendRequest({",
+          "  url: pm.variables.get('token_url'),",
+          "  method: 'POST',",
+          "  header: { 'Authorization': 'Basic ' + basic, 'Content-Type': 'application/x-www-form-urlencoded' },",
+          "  body: { mode: 'urlencoded', urlencoded: [{ key: 'grant_type', value: 'client_credentials' }] }",
+          "}, (err, res) => {",
+          "  if (err || res.code !== 200) { console.error('Token request failed', err || res.code); return; }",
+          "  const b = res.json();",
+          "  pm.collectionVariables.set('access_token', b.access_token);",
+          "  pm.collectionVariables.set('token_expires_at', String(Date.now() + b.expires_in * 1000));",
+          "});"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "access_token",
+      "value": "",
+      "description": "Set automatically by the pre-request script / Get Access Token"
+    },
+    {
+      "key": "token_expires_at",
+      "value": "0",
+      "description": "Epoch ms; set automatically"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Auth",
+      "description": "OAuth 2.0 client-credentials token endpoint.",
+      "item": [
+        {
+          "name": "Get Access Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "{{token_url}}",
+              "host": [
+                "{{token_url}}"
+              ],
+              "path": []
+            },
+            "description": "Obtains a Bearer token. **Client auth:** HTTP Basic `base64(client_id:client_secret)`. **Body:** `grant_type=client_credentials` (form-urlencoded; JSON is also accepted).\n\n| Field | Type | Description |\n|---|---|---|\n| access_token | string | Use as `Authorization: Bearer <token>` |\n| expires_in | integer | Seconds (1800 = 30 min) |\n| token_type | string | `Bearer` |\n| scope | string | `uid introspection openid` |\n\nErrors: 401 bad credentials **or missing grant_type**; 400 unsupported grant_type; 405 GET instead of POST.",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "client_credentials",
+                  "type": "text"
+                }
+              ]
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{client_id}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{client_secret}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('Bearer token returned', () => { pm.expect(b.token_type).to.eql('Bearer'); pm.expect(b.access_token).to.be.a('string'); });",
+                  "pm.collectionVariables.set('access_token', b.access_token);",
+                  "pm.collectionVariables.set('token_expires_at', String(Date.now() + b.expires_in * 1000));"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/x-www-form-urlencoded"
+                  }
+                ],
+                "url": {
+                  "raw": "{{token_url}}",
+                  "host": [
+                    "{{token_url}}"
+                  ],
+                  "path": []
+                },
+                "description": "Obtains a Bearer token. **Client auth:** HTTP Basic `base64(client_id:client_secret)`. **Body:** `grant_type=client_credentials` (form-urlencoded; JSON is also accepted).\n\n| Field | Type | Description |\n|---|---|---|\n| access_token | string | Use as `Authorization: Bearer <token>` |\n| expires_in | integer | Seconds (1800 = 30 min) |\n| token_type | string | `Bearer` |\n| scope | string | `uid introspection openid` |\n\nErrors: 401 bad credentials **or missing grant_type**; 400 unsupported grant_type; 405 GET instead of POST.",
+                "body": {
+                  "mode": "urlencoded",
+                  "urlencoded": [
+                    {
+                      "key": "grant_type",
+                      "value": "client_credentials",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "auth": {
+                  "type": "basic",
+                  "basic": [
+                    {
+                      "key": "username",
+                      "value": "{{client_id}}",
+                      "type": "string"
+                    },
+                    {
+                      "key": "password",
+                      "value": "{{client_secret}}",
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"access_token\": \"Lf4A**************************\",\n  \"expires_in\": 1800,\n  \"token_type\": \"Bearer\",\n  \"scope\": \"uid introspection openid\"\n}"
+            },
+            {
+              "name": "401 Bad credentials / missing grant_type",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/x-www-form-urlencoded"
+                  }
+                ],
+                "url": {
+                  "raw": "{{token_url}}",
+                  "host": [
+                    "{{token_url}}"
+                  ],
+                  "path": []
+                },
+                "description": "Obtains a Bearer token. **Client auth:** HTTP Basic `base64(client_id:client_secret)`. **Body:** `grant_type=client_credentials` (form-urlencoded; JSON is also accepted).\n\n| Field | Type | Description |\n|---|---|---|\n| access_token | string | Use as `Authorization: Bearer <token>` |\n| expires_in | integer | Seconds (1800 = 30 min) |\n| token_type | string | `Bearer` |\n| scope | string | `uid introspection openid` |\n\nErrors: 401 bad credentials **or missing grant_type**; 400 unsupported grant_type; 405 GET instead of POST.",
+                "body": {
+                  "mode": "urlencoded",
+                  "urlencoded": [
+                    {
+                      "key": "grant_type",
+                      "value": "client_credentials",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "auth": {
+                  "type": "basic",
+                  "basic": [
+                    {
+                      "key": "username",
+                      "value": "{{client_id}}",
+                      "type": "string"
+                    },
+                    {
+                      "key": "password",
+                      "value": "{{client_secret}}",
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "status": "Unauthorized",
+              "code": 401,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"Request\": {\n    \"message\": \"Valid authentication credentials were not provided.\",\n    \"info\": {}\n  }\n}"
+            },
+            {
+              "name": "400 Unsupported grant_type",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/x-www-form-urlencoded"
+                  }
+                ],
+                "url": {
+                  "raw": "{{token_url}}",
+                  "host": [
+                    "{{token_url}}"
+                  ],
+                  "path": []
+                },
+                "description": "Obtains a Bearer token. **Client auth:** HTTP Basic `base64(client_id:client_secret)`. **Body:** `grant_type=client_credentials` (form-urlencoded; JSON is also accepted).\n\n| Field | Type | Description |\n|---|---|---|\n| access_token | string | Use as `Authorization: Bearer <token>` |\n| expires_in | integer | Seconds (1800 = 30 min) |\n| token_type | string | `Bearer` |\n| scope | string | `uid introspection openid` |\n\nErrors: 401 bad credentials **or missing grant_type**; 400 unsupported grant_type; 405 GET instead of POST.",
+                "body": {
+                  "mode": "urlencoded",
+                  "urlencoded": [
+                    {
+                      "key": "grant_type",
+                      "value": "client_credentials",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "auth": {
+                  "type": "basic",
+                  "basic": [
+                    {
+                      "key": "username",
+                      "value": "{{client_id}}",
+                      "type": "string"
+                    },
+                    {
+                      "key": "password",
+                      "value": "{{client_secret}}",
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"Request\": {\n    \"message\": \"Bad Request.\",\n    \"info\": {}\n  }\n}"
+            },
+            {
+              "name": "405 Wrong method (GET)",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/x-www-form-urlencoded"
+                  }
+                ],
+                "url": {
+                  "raw": "{{token_url}}",
+                  "host": [
+                    "{{token_url}}"
+                  ],
+                  "path": []
+                },
+                "description": "Obtains a Bearer token. **Client auth:** HTTP Basic `base64(client_id:client_secret)`. **Body:** `grant_type=client_credentials` (form-urlencoded; JSON is also accepted).\n\n| Field | Type | Description |\n|---|---|---|\n| access_token | string | Use as `Authorization: Bearer <token>` |\n| expires_in | integer | Seconds (1800 = 30 min) |\n| token_type | string | `Bearer` |\n| scope | string | `uid introspection openid` |\n\nErrors: 401 bad credentials **or missing grant_type**; 400 unsupported grant_type; 405 GET instead of POST.",
+                "body": {
+                  "mode": "urlencoded",
+                  "urlencoded": [
+                    {
+                      "key": "grant_type",
+                      "value": "client_credentials",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "auth": {
+                  "type": "basic",
+                  "basic": [
+                    {
+                      "key": "username",
+                      "value": "{{client_id}}",
+                      "type": "string"
+                    },
+                    {
+                      "key": "password",
+                      "value": "{{client_secret}}",
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "status": "Method Not Allowed",
+              "code": 405,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"Request\": {\n    \"message\": \"Method not allowed.\",\n    \"info\": {}\n  }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Companies",
+      "description": "`GET /v2.0/companies/`: 20 per page, fixed. Accepted query params: `page`, `portfolio`, `name` (≥3 chars, partial, case-insensitive), `ticker` (exact, case-sensitive), `externalSourceId`. Anything else returns 400. No \"changed since\" filter exists.",
+      "item": [
+        {
+          "name": "List Companies",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{data_api_url}}/companies/?",
+              "host": [
+                "{{data_api_url}}"
+              ],
+              "path": [
+                "companies",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number (≥1). Follow `next` rather than guessing.",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "All companies visible to the account. `latestRatings` holds up to 5 newest ratings (newest first)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Envelope has count/next/previous/results\", () => {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b).to.have.property(\"count\");",
+                  "  pm.expect(b).to.have.property(\"next\");",
+                  "  pm.expect(b.results).to.be.an(\"array\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK (trimmed)",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{data_api_url}}/companies/?",
+                  "host": [
+                    "{{data_api_url}}"
+                  ],
+                  "path": [
+                    "companies",
+                    ""
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "description": "Page number (≥1). Follow `next` rather than guessing.",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "All companies visible to the account. `latestRatings` holds up to 5 newest ratings (newest first)."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"count\": 96,\n  \"previous\": null,\n  \"next\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/?page=2\",\n  \"results\": [\n    {\n      \"id\": \"XAZPzdJ\",\n      \"name\": \"Tyson Foods, Inc.\",\n      \"country\": \"USA\",\n      \"ticker\": \"TSN\",\n      \"exchange\": \"US\",\n      \"sector\": \"Food, Beverage and Tobacco\",\n      \"href\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/XAZPzdJ/\",\n      \"financials\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/XAZPzdJ/financials/\",\n      \"periods\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/XAZPzdJ/periods/\",\n      \"ratings\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/XAZPzdJ/ratings/\",\n      \"latestRatings\": [\n        {\n          \"id\": \"2020Q2\",\n          \"href\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/XAZPzdJ/ratings/2020Q2/\",\n          \"eqyYear\": 2020,\n          \"period\": \"Q2\",\n          \"financialDate\": \"2020-03-28\",\n          \"reportingPeriod\": \"2020-05-15\",\n          \"fhr\": 49,\n          \"chs\": 48,\n          \"probabilityDefault\": 0.3343,\n          \"termPd\": {\n            \"year2\": 3.83,\n            \"year3\": 6.52,\n            \"year4\": 9.35,\n            \"year5\": 12.29,\n            \"year6\": 15.39,\n            \"year7\": 18.73,\n            \"year8\": 22.42,\n            \"year9\": 26.54,\n            \"year10\": 31.12\n          },\n          \"delta\": 0,\n          \"simulatedFhr\": 49,\n          \"simulatedFhrDelta\": -1,\n          \"operatingProfitability\": 30,\n          \"netProfitability\": 66,\n          \"capitalStructureEfficiency\": 12,\n          \"costStructureEfficiency\": 63,\n          \"leverage\": \"Average\",\n          \"liquidity\": \"Average\",\n          \"earningsPerformance\": \"Average\"\n        }\n      ],\n      \"reportLinks\": {},\n      \"address\": \"\",\n      \"industryClassificationSystem\": null,\n      \"industryClassificationCode\": null,\n      \"currency\": \"USD\",\n      \"dataScale\": \"millions\",\n      \"dataConfidential\": \"PUB\",\n      \"externalSourceId\": null,\n      \"externalSourceIds\": []\n    }\n  ]\n}"
+            },
+            {
+              "name": "404 Page past the end",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{data_api_url}}/companies/?",
+                  "host": [
+                    "{{data_api_url}}"
+                  ],
+                  "path": [
+                    "companies",
+                    ""
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "description": "Page number (≥1). Follow `next` rather than guessing.",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "All companies visible to the account. `latestRatings` holds up to 5 newest ratings (newest first)."
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"Companies\": {\n    \"message\": \"Not Found.\",\n    \"info\": {}\n  }\n}"
+            },
+            {
+              "name": "400 Unknown parameter",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{data_api_url}}/companies/?",
+                  "host": [
+                    "{{data_api_url}}"
+                  ],
+                  "path": [
+                    "companies",
+                    ""
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "description": "Page number (≥1). Follow `next` rather than guessing.",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "All companies visible to the account. `latestRatings` holds up to 5 newest ratings (newest first)."
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"Request\": {\n    \"message\": \"Not valid query parameter: sector.\",\n    \"info\": {}\n  }\n}"
+            },
+            {
+              "name": "403 Invalid / expired token",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{data_api_url}}/companies/?",
+                  "host": [
+                    "{{data_api_url}}"
+                  ],
+                  "path": [
+                    "companies",
+                    ""
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "description": "Page number (≥1). Follow `next` rather than guessing.",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "All companies visible to the account. `latestRatings` holds up to 5 newest ratings (newest first)."
+              },
+              "status": "Forbidden",
+              "code": 403,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"Request\": {\n    \"message\": \"Not Authorized.\",\n    \"info\": {}\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "List Companies in Portfolio",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{data_api_url}}/companies/?portfolio={{portfolio_id}}",
+              "host": [
+                "{{data_api_url}}"
+              ],
+              "path": [
+                "companies",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "portfolio",
+                  "value": "{{portfolio_id}}",
+                  "description": "Portfolio ID (integer)"
+                }
+              ]
+            },
+            "description": "Companies in one portfolio. `next` keeps the filter (e.g. `?portfolio=27070&page=2`)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Envelope has count/next/previous/results\", () => {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b).to.have.property(\"count\");",
+                  "  pm.expect(b).to.have.property(\"next\");",
+                  "  pm.expect(b.results).to.be.an(\"array\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK (trimmed)",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{data_api_url}}/companies/?portfolio={{portfolio_id}}",
+                  "host": [
+                    "{{data_api_url}}"
+                  ],
+                  "path": [
+                    "companies",
+                    ""
+                  ],
+                  "query": [
+                    {
+                      "key": "portfolio",
+                      "value": "{{portfolio_id}}",
+                      "description": "Portfolio ID (integer)"
+                    }
+                  ]
+                },
+                "description": "Companies in one portfolio. `next` keeps the filter (e.g. `?portfolio=27070&page=2`)."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"count\": 96,\n  \"previous\": null,\n  \"next\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/?portfolio=27070&page=2\",\n  \"results\": [\n    {\n      \"id\": \"XAZPzdJ\",\n      \"name\": \"Tyson Foods, Inc.\",\n      \"country\": \"USA\",\n      \"ticker\": \"TSN\",\n      \"exchange\": \"US\",\n      \"sector\": \"Food, Beverage and Tobacco\",\n      \"href\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/XAZPzdJ/\",\n      \"financials\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/XAZPzdJ/financials/\",\n      \"periods\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/XAZPzdJ/periods/\",\n      \"ratings\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/XAZPzdJ/ratings/\",\n      \"latestRatings\": [\n        {\n          \"id\": \"2020Q2\",\n          \"href\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/XAZPzdJ/ratings/2020Q2/\",\n          \"eqyYear\": 2020,\n          \"period\": \"Q2\",\n          \"financialDate\": \"2020-03-28\",\n          \"reportingPeriod\": \"2020-05-15\",\n          \"fhr\": 49,\n          \"chs\": 48,\n          \"probabilityDefault\": 0.3343,\n          \"termPd\": {\n            \"year2\": 3.83,\n            \"year3\": 6.52,\n            \"year4\": 9.35,\n            \"year5\": 12.29,\n            \"year6\": 15.39,\n            \"year7\": 18.73,\n            \"year8\": 22.42,\n            \"year9\": 26.54,\n            \"year10\": 31.12\n          },\n          \"delta\": 0,\n          \"simulatedFhr\": 49,\n          \"simulatedFhrDelta\": -1,\n          \"operatingProfitability\": 30,\n          \"netProfitability\": 66,\n          \"capitalStructureEfficiency\": 12,\n          \"costStructureEfficiency\": 63,\n          \"leverage\": \"Average\",\n          \"liquidity\": \"Average\",\n          \"earningsPerformance\": \"Average\"\n        }\n      ],\n      \"reportLinks\": {},\n      \"address\": \"\",\n      \"industryClassificationSystem\": null,\n      \"industryClassificationCode\": null,\n      \"currency\": \"USD\",\n      \"dataScale\": \"millions\",\n      \"dataConfidential\": \"PUB\",\n      \"externalSourceId\": null,\n      \"externalSourceIds\": []\n    }\n  ]\n}"
+            },
+            {
+              "name": "404 Unknown portfolio",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{data_api_url}}/companies/?portfolio={{portfolio_id}}",
+                  "host": [
+                    "{{data_api_url}}"
+                  ],
+                  "path": [
+                    "companies",
+                    ""
+                  ],
+                  "query": [
+                    {
+                      "key": "portfolio",
+                      "value": "{{portfolio_id}}",
+                      "description": "Portfolio ID (integer)"
+                    }
+                  ]
+                },
+                "description": "Companies in one portfolio. `next` keeps the filter (e.g. `?portfolio=27070&page=2`)."
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"Portfolio\": {\n    \"message\": \"Portfolio 999999 not Found.\",\n    \"info\": {}\n  }\n}"
+            },
+            {
+              "name": "400 Non-integer portfolio",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{data_api_url}}/companies/?portfolio={{portfolio_id}}",
+                  "host": [
+                    "{{data_api_url}}"
+                  ],
+                  "path": [
+                    "companies",
+                    ""
+                  ],
+                  "query": [
+                    {
+                      "key": "portfolio",
+                      "value": "{{portfolio_id}}",
+                      "description": "Portfolio ID (integer)"
+                    }
+                  ]
+                },
+                "description": "Companies in one portfolio. `next` keeps the filter (e.g. `?portfolio=27070&page=2`)."
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"Request\": {\n    \"message\": \"Bad type for parameter: portfolio (int).\",\n    \"info\": {}\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Search Companies by Name",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{data_api_url}}/companies/?name=tyson",
+              "host": [
+                "{{data_api_url}}"
+              ],
+              "path": [
+                "companies",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "name",
+                  "value": "tyson",
+                  "description": "Min 3 characters; partial, case-insensitive"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Envelope has count/next/previous/results\", () => {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b).to.have.property(\"count\");",
+                  "  pm.expect(b).to.have.property(\"next\");",
+                  "  pm.expect(b.results).to.be.an(\"array\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK (trimmed)",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{data_api_url}}/companies/?name=tyson",
+                  "host": [
+                    "{{data_api_url}}"
+                  ],
+                  "path": [
+                    "companies",
+                    ""
+                  ],
+                  "query": [
+                    {
+                      "key": "name",
+                      "value": "tyson",
+                      "description": "Min 3 characters; partial, case-insensitive"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"count\": 1,\n  \"previous\": null,\n  \"next\": null,\n  \"results\": [\n    {\n      \"id\": \"XAZPzdJ\",\n      \"name\": \"Tyson Foods, Inc.\",\n      \"country\": \"USA\",\n      \"ticker\": \"TSN\",\n      \"exchange\": \"US\",\n      \"sector\": \"Food, Beverage and Tobacco\",\n      \"href\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/XAZPzdJ/\",\n      \"financials\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/XAZPzdJ/financials/\",\n      \"periods\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/XAZPzdJ/periods/\",\n      \"ratings\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/XAZPzdJ/ratings/\",\n      \"latestRatings\": [\n        {\n          \"id\": \"2020Q2\",\n          \"href\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/XAZPzdJ/ratings/2020Q2/\",\n          \"eqyYear\": 2020,\n          \"period\": \"Q2\",\n          \"financialDate\": \"2020-03-28\",\n          \"reportingPeriod\": \"2020-05-15\",\n          \"fhr\": 49,\n          \"chs\": 48,\n          \"probabilityDefault\": 0.3343,\n          \"termPd\": {\n            \"year2\": 3.83,\n            \"year3\": 6.52,\n            \"year4\": 9.35,\n            \"year5\": 12.29,\n            \"year6\": 15.39,\n            \"year7\": 18.73,\n            \"year8\": 22.42,\n            \"year9\": 26.54,\n            \"year10\": 31.12\n          },\n          \"delta\": 0,\n          \"simulatedFhr\": 49,\n          \"simulatedFhrDelta\": -1,\n          \"operatingProfitability\": 30,\n          \"netProfitability\": 66,\n          \"capitalStructureEfficiency\": 12,\n          \"costStructureEfficiency\": 63,\n          \"leverage\": \"Average\",\n          \"liquidity\": \"Average\",\n          \"earningsPerformance\": \"Average\"\n        }\n      ],\n      \"reportLinks\": {},\n      \"address\": \"\",\n      \"industryClassificationSystem\": null,\n      \"industryClassificationCode\": null,\n      \"currency\": \"USD\",\n      \"dataScale\": \"millions\",\n      \"dataConfidential\": \"PUB\",\n      \"externalSourceId\": null,\n      \"externalSourceIds\": []\n    }\n  ]\n}"
+            },
+            {
+              "name": "400 Name too short",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{data_api_url}}/companies/?name=tyson",
+                  "host": [
+                    "{{data_api_url}}"
+                  ],
+                  "path": [
+                    "companies",
+                    ""
+                  ],
+                  "query": [
+                    {
+                      "key": "name",
+                      "value": "tyson",
+                      "description": "Min 3 characters; partial, case-insensitive"
+                    }
+                  ]
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"Request\": {\n    \"message\": \"Invalid parameter: name must be at least 3 characters.\",\n    \"info\": {}\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Find Company by Ticker",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{data_api_url}}/companies/?ticker=TSN",
+              "host": [
+                "{{data_api_url}}"
+              ],
+              "path": [
+                "companies",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "ticker",
+                  "value": "TSN",
+                  "description": "Exact and case-sensitive (tsn returns 0 results)"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Envelope has count/next/previous/results\", () => {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b).to.have.property(\"count\");",
+                  "  pm.expect(b).to.have.property(\"next\");",
+                  "  pm.expect(b.results).to.be.an(\"array\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK (trimmed)",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{data_api_url}}/companies/?ticker=TSN",
+                  "host": [
+                    "{{data_api_url}}"
+                  ],
+                  "path": [
+                    "companies",
+                    ""
+                  ],
+                  "query": [
+                    {
+                      "key": "ticker",
+                      "value": "TSN",
+                      "description": "Exact and case-sensitive (tsn returns 0 results)"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"count\": 1,\n  \"previous\": null,\n  \"next\": null,\n  \"results\": [\n    {\n      \"id\": \"XAZPzdJ\",\n      \"name\": \"Tyson Foods, Inc.\",\n      \"country\": \"USA\",\n      \"ticker\": \"TSN\",\n      \"exchange\": \"US\",\n      \"sector\": \"Food, Beverage and Tobacco\",\n      \"href\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/XAZPzdJ/\",\n      \"financials\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/XAZPzdJ/financials/\",\n      \"periods\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/XAZPzdJ/periods/\",\n      \"ratings\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/XAZPzdJ/ratings/\",\n      \"latestRatings\": [\n        {\n          \"id\": \"2020Q2\",\n          \"href\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/XAZPzdJ/ratings/2020Q2/\",\n          \"eqyYear\": 2020,\n          \"period\": \"Q2\",\n          \"financialDate\": \"2020-03-28\",\n          \"reportingPeriod\": \"2020-05-15\",\n          \"fhr\": 49,\n          \"chs\": 48,\n          \"probabilityDefault\": 0.3343,\n          \"termPd\": {\n            \"year2\": 3.83,\n            \"year3\": 6.52,\n            \"year4\": 9.35,\n            \"year5\": 12.29,\n            \"year6\": 15.39,\n            \"year7\": 18.73,\n            \"year8\": 22.42,\n            \"year9\": 26.54,\n            \"year10\": 31.12\n          },\n          \"delta\": 0,\n          \"simulatedFhr\": 49,\n          \"simulatedFhrDelta\": -1,\n          \"operatingProfitability\": 30,\n          \"netProfitability\": 66,\n          \"capitalStructureEfficiency\": 12,\n          \"costStructureEfficiency\": 63,\n          \"leverage\": \"Average\",\n          \"liquidity\": \"Average\",\n          \"earningsPerformance\": \"Average\"\n        }\n      ],\n      \"reportLinks\": {},\n      \"address\": \"\",\n      \"industryClassificationSystem\": null,\n      \"industryClassificationCode\": null,\n      \"currency\": \"USD\",\n      \"dataScale\": \"millions\",\n      \"dataConfidential\": \"PUB\",\n      \"externalSourceId\": null,\n      \"externalSourceIds\": []\n    }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Company",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{data_api_url}}/companies/{{rrid}}/",
+              "host": [
+                "{{data_api_url}}"
+              ],
+              "path": [
+                "companies",
+                "{{rrid}}",
+                ""
+              ]
+            },
+            "description": "Single company (no envelope). Adds `reports` (PDF download links) and `sectorAverages` (`fhr`, `chs`) to the list fields. **Trailing slash required** (without it: 404)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Has id\", () => pm.expect(pm.response.json().id).to.eql(pm.variables.get(\"rrid\")));"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK (trimmed)",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{data_api_url}}/companies/{{rrid}}/",
+                  "host": [
+                    "{{data_api_url}}"
+                  ],
+                  "path": [
+                    "companies",
+                    "{{rrid}}",
+                    ""
+                  ]
+                },
+                "description": "Single company (no envelope). Adds `reports` (PDF download links) and `sectorAverages` (`fhr`, `chs`) to the list fields. **Trailing slash required** (without it: 404)."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"id\": \"XAZPzdJ\",\n  \"name\": \"Tyson Foods, Inc.\",\n  \"country\": \"USA\",\n  \"ticker\": \"TSN\",\n  \"exchange\": \"US\",\n  \"sector\": \"Food, Beverage and Tobacco\",\n  \"href\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/XAZPzdJ/\",\n  \"financials\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/XAZPzdJ/financials/\",\n  \"periods\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/XAZPzdJ/periods/\",\n  \"ratings\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/XAZPzdJ/ratings/\",\n  \"latestRatings\": [\n    {\n      \"id\": \"2020Q2\",\n      \"href\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/XAZPzdJ/ratings/2020Q2/\",\n      \"eqyYear\": 2020,\n      \"period\": \"Q2\",\n      \"financialDate\": \"2020-03-28\",\n      \"reportingPeriod\": \"2020-05-15\",\n      \"fhr\": 49,\n      \"chs\": 48,\n      \"probabilityDefault\": 0.3343,\n      \"termPd\": {\n        \"year2\": 3.83,\n        \"year3\": 6.52,\n        \"year4\": 9.35,\n        \"year5\": 12.29,\n        \"year6\": 15.39,\n        \"year7\": 18.73,\n        \"year8\": 22.42,\n        \"year9\": 26.54,\n        \"year10\": 31.12\n      },\n      \"delta\": 0,\n      \"simulatedFhr\": 49,\n      \"simulatedFhrDelta\": -1,\n      \"operatingProfitability\": 30,\n      \"netProfitability\": 66,\n      \"capitalStructureEfficiency\": 12,\n      \"costStructureEfficiency\": 63,\n      \"leverage\": \"Average\",\n      \"liquidity\": \"Average\",\n      \"earningsPerformance\": \"Average\"\n    }\n  ],\n  \"reportLinks\": {},\n  \"address\": \"\",\n  \"industryClassificationSystem\": null,\n  \"industryClassificationCode\": null,\n  \"currency\": \"USD\",\n  \"dataScale\": \"millions\",\n  \"dataConfidential\": \"PUB\",\n  \"externalSourceId\": null,\n  \"externalSourceIds\": [],\n  \"reports\": [\n    {\n      \"downloadHref\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/XAZPzdJ/reports/?reportType=fhr\",\n      \"reportType\": \"fhr\"\n    },\n    {\n      \"downloadHref\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/XAZPzdJ/reports/?reportType=financial_dialogue\",\n      \"reportType\": \"financial_dialogue\"\n    },\n    {\n      \"downloadHref\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/XAZPzdJ/reports/?reportType=peer_benchmark\",\n      \"reportType\": \"peer_benchmark\"\n    }\n  ],\n  \"sectorAverages\": {\n    \"chs\": 45.8,\n    \"fhr\": 52.6\n  }\n}"
+            },
+            {
+              "name": "404 Unknown RRID",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{data_api_url}}/companies/{{rrid}}/",
+                  "host": [
+                    "{{data_api_url}}"
+                  ],
+                  "path": [
+                    "companies",
+                    "{{rrid}}",
+                    ""
+                  ]
+                },
+                "description": "Single company (no envelope). Adds `reports` (PDF download links) and `sectorAverages` (`fhr`, `chs`) to the list fields. **Trailing slash required** (without it: 404)."
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"Request\": {\n    \"message\": \"Not Found.\",\n    \"info\": {}\n  }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Portfolios",
+      "description": "`GET /v2.0/portfolios/`: read-only. Only `page` is accepted.",
+      "item": [
+        {
+          "name": "List Portfolios",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{data_api_url}}/portfolios/",
+              "host": [
+                "{{data_api_url}}"
+              ],
+              "path": [
+                "portfolios",
+                ""
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Envelope has count/next/previous/results\", () => {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b).to.have.property(\"count\");",
+                  "  pm.expect(b).to.have.property(\"next\");",
+                  "  pm.expect(b.results).to.be.an(\"array\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{data_api_url}}/portfolios/",
+                  "host": [
+                    "{{data_api_url}}"
+                  ],
+                  "path": [
+                    "portfolios",
+                    ""
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"count\": 5,\n  \"previous\": null,\n  \"next\": null,\n  \"results\": [\n    {\n      \"companies\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/?portfolio=631\",\n      \"id\": 631,\n      \"name\": \"Fortune 500\",\n      \"href\": \"https://rridata.sandbox.rrilabs.co/v2.0/portfolios/631/\"\n    },\n    {\n      \"companies\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/?portfolio=137\",\n      \"id\": 137,\n      \"name\": \"INTERNATIONAL COVERAGE\",\n      \"href\": \"https://rridata.sandbox.rrilabs.co/v2.0/portfolios/137/\"\n    },\n    {\n      \"companies\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/?portfolio=36\",\n      \"id\": 36,\n      \"name\": \"US COVERAGE\",\n      \"href\": \"https://rridata.sandbox.rrilabs.co/v2.0/portfolios/36/\"\n    },\n    {\n      \"companies\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/?portfolio=27070\",\n      \"id\": 27070,\n      \"name\": \"z2Data Sandbox\",\n      \"href\": \"https://rridata.sandbox.rrilabs.co/v2.0/portfolios/27070/\"\n    },\n    {\n      \"companies\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/?portfolio=27072\",\n      \"id\": 27072,\n      \"name\": \"z2Data Sandbox-Private\",\n      \"href\": \"https://rridata.sandbox.rrilabs.co/v2.0/portfolios/27072/\"\n    }\n  ]\n}"
+            },
+            {
+              "name": "500 Page past the end (?page=2)",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{data_api_url}}/portfolios/",
+                  "host": [
+                    "{{data_api_url}}"
+                  ],
+                  "path": [
+                    "portfolios",
+                    ""
+                  ]
+                }
+              },
+              "status": "Internal Server Error",
+              "code": 500,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"Request\": {\n    \"message\": \"Internal Server Error.\",\n    \"info\": {}\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Portfolio",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{data_api_url}}/portfolios/{{portfolio_id}}/",
+              "host": [
+                "{{data_api_url}}"
+              ],
+              "path": [
+                "portfolios",
+                "{{portfolio_id}}",
+                ""
+              ]
+            },
+            "description": "Single portfolio. The `companies` link is the documented way to get its members."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{data_api_url}}/portfolios/{{portfolio_id}}/",
+                  "host": [
+                    "{{data_api_url}}"
+                  ],
+                  "path": [
+                    "portfolios",
+                    "{{portfolio_id}}",
+                    ""
+                  ]
+                },
+                "description": "Single portfolio. The `companies` link is the documented way to get its members."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"companies\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/?portfolio=27070\",\n  \"id\": 27070,\n  \"name\": \"z2Data Sandbox\",\n  \"href\": \"https://rridata.sandbox.rrilabs.co/v2.0/portfolios/27070/\"\n}"
+            },
+            {
+              "name": "404 Unknown portfolio",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{data_api_url}}/portfolios/{{portfolio_id}}/",
+                  "host": [
+                    "{{data_api_url}}"
+                  ],
+                  "path": [
+                    "portfolios",
+                    "{{portfolio_id}}",
+                    ""
+                  ]
+                },
+                "description": "Single portfolio. The `companies` link is the documented way to get its members."
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"Portfolio\": {\n    \"message\": \"Portfolio 999999 not Found.\",\n    \"info\": {}\n  }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Periods",
+      "description": "`GET /v2.0/companies/{rrid}/periods/`: financial statement figures per period, 10 per page, newest first. Amounts use the company's `currency` and `dataScale` (e.g. millions). Only `page` is accepted.",
+      "item": [
+        {
+          "name": "List Periods",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{data_api_url}}/companies/{{rrid}}/periods/?",
+              "host": [
+                "{{data_api_url}}"
+              ],
+              "path": [
+                "companies",
+                "{{rrid}}",
+                "periods",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number; past the end returns 500",
+                  "disabled": true
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Envelope has count/next/previous/results\", () => {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b).to.have.property(\"count\");",
+                  "  pm.expect(b).to.have.property(\"next\");",
+                  "  pm.expect(b.results).to.be.an(\"array\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK (trimmed)",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{data_api_url}}/companies/{{rrid}}/periods/?",
+                  "host": [
+                    "{{data_api_url}}"
+                  ],
+                  "path": [
+                    "companies",
+                    "{{rrid}}",
+                    "periods",
+                    ""
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "description": "Page number; past the end returns 500",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"count\": 26,\n  \"previous\": null,\n  \"next\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/XAZPzdJ/periods/?page=2\",\n  \"results\": [\n    {\n      \"netInvestingCashFlow\": -3464,\n      \"totalCurrentLiabilities\": 5513,\n      \"totalLiabilities\": 18871,\n      \"cashFromOperationsFromCashFlow\": null,\n      \"totalShareholderEquity\": 14226,\n      \"netProfitAfterTax\": 2035,\n      \"currency\": \"USD\",\n      \"bankCashBalances\": 484,\n      \"href\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/XAZPzdJ/periods/2019YE/\",\n      \"interestExpense\": 462,\n      \"period\": \"YE\",\n      \"interestReceived\": 11,\n      \"companyTaxExpense\": 396,\n      \"earningsBeforeInterestAndTax\": 2882,\n      \"id\": \"2019YE\",\n      \"abnormalItems\": 14,\n      \"termLoans\": 9830,\n      \"fixedAssets\": 7282,\n      \"totalCurrentAssets\": 7169,\n      \"salesRevenue\": 42405,\n      \"debitOwnedWithinOneYear\": 2102,\n      \"financialDate\": \"2019-09-28\",\n      \"totalAssets\": 33097,\n      \"eqyYear\": 2019,\n      \"netFundingCashFlow\": 1171,\n      \"financialAssets\": null\n    }\n  ]\n}"
+            },
+            {
+              "name": "500 Page past the end",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{data_api_url}}/companies/{{rrid}}/periods/?",
+                  "host": [
+                    "{{data_api_url}}"
+                  ],
+                  "path": [
+                    "companies",
+                    "{{rrid}}",
+                    "periods",
+                    ""
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "description": "Page number; past the end returns 500",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "status": "Internal Server Error",
+              "code": 500,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"Request\": {\n    \"message\": \"Internal Server Error.\",\n    \"info\": {}\n  }\n}"
+            },
+            {
+              "name": "400 Unknown parameter",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{data_api_url}}/companies/{{rrid}}/periods/?",
+                  "host": [
+                    "{{data_api_url}}"
+                  ],
+                  "path": [
+                    "companies",
+                    "{{rrid}}",
+                    "periods",
+                    ""
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "description": "Page number; past the end returns 500",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"Request\": {\n    \"message\": \"Not valid query parameter: eqyYear.\",\n    \"info\": {}\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Period",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{data_api_url}}/companies/{{rrid}}/periods/{{period_id}}/",
+              "host": [
+                "{{data_api_url}}"
+              ],
+              "path": [
+                "companies",
+                "{{rrid}}",
+                "periods",
+                "{{period_id}}",
+                ""
+              ]
+            },
+            "description": "`period_id` = eqyYear + period, e.g. `2019YE`, `2020Q2`. Same ID as the matching rating."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{data_api_url}}/companies/{{rrid}}/periods/{{period_id}}/",
+                  "host": [
+                    "{{data_api_url}}"
+                  ],
+                  "path": [
+                    "companies",
+                    "{{rrid}}",
+                    "periods",
+                    "{{period_id}}",
+                    ""
+                  ]
+                },
+                "description": "`period_id` = eqyYear + period, e.g. `2019YE`, `2020Q2`. Same ID as the matching rating."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"netInvestingCashFlow\": -3464,\n  \"totalCurrentLiabilities\": 5513,\n  \"totalLiabilities\": 18871,\n  \"cashFromOperationsFromCashFlow\": null,\n  \"totalShareholderEquity\": 14226,\n  \"netProfitAfterTax\": 2035,\n  \"currency\": \"USD\",\n  \"bankCashBalances\": 484,\n  \"href\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/XAZPzdJ/periods/2019YE/\",\n  \"interestExpense\": 462,\n  \"period\": \"YE\",\n  \"interestReceived\": 11,\n  \"companyTaxExpense\": 396,\n  \"earningsBeforeInterestAndTax\": 2882,\n  \"id\": \"2019YE\",\n  \"abnormalItems\": 14,\n  \"termLoans\": 9830,\n  \"fixedAssets\": 7282,\n  \"totalCurrentAssets\": 7169,\n  \"salesRevenue\": 42405,\n  \"debitOwnedWithinOneYear\": 2102,\n  \"financialDate\": \"2019-09-28\",\n  \"totalAssets\": 33097,\n  \"eqyYear\": 2019,\n  \"netFundingCashFlow\": 1171,\n  \"financialAssets\": null\n}"
+            },
+            {
+              "name": "404 Unknown period",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{data_api_url}}/companies/{{rrid}}/periods/{{period_id}}/",
+                  "host": [
+                    "{{data_api_url}}"
+                  ],
+                  "path": [
+                    "companies",
+                    "{{rrid}}",
+                    "periods",
+                    "{{period_id}}",
+                    ""
+                  ]
+                },
+                "description": "`period_id` = eqyYear + period, e.g. `2019YE`, `2020Q2`. Same ID as the matching rating."
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"Request\": {\n    \"message\": \"Not Found.\",\n    \"info\": {}\n  }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Ratings",
+      "description": "`GET /v2.0/companies/{rrid}/ratings/`: full rating history, 10 per page, newest first. Only `page` is accepted.",
+      "item": [
+        {
+          "name": "List Ratings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{data_api_url}}/companies/{{rrid}}/ratings/?",
+              "host": [
+                "{{data_api_url}}"
+              ],
+              "path": [
+                "companies",
+                "{{rrid}}",
+                "ratings",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number; past the end returns 500",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "| Field | Description |\n|---|---|\n| fhr | Financial Health Rating 0–100 (12-month default risk; higher = healthier) |\n| chs | Core Health Score 0–100 (2–3 year resilience) |\n| probabilityDefault | 1-year PD in percent |\n| termPd.year2…year10 | Cumulative PD in percent |\n| delta / simulatedFhrDelta | Change vs previous (null for oldest) |\n| leverage / liquidity / earningsPerformance | Strong / Average / Weak |"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Envelope has count/next/previous/results\", () => {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b).to.have.property(\"count\");",
+                  "  pm.expect(b).to.have.property(\"next\");",
+                  "  pm.expect(b.results).to.be.an(\"array\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK (trimmed)",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{data_api_url}}/companies/{{rrid}}/ratings/?",
+                  "host": [
+                    "{{data_api_url}}"
+                  ],
+                  "path": [
+                    "companies",
+                    "{{rrid}}",
+                    "ratings",
+                    ""
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "description": "Page number; past the end returns 500",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "| Field | Description |\n|---|---|\n| fhr | Financial Health Rating 0–100 (12-month default risk; higher = healthier) |\n| chs | Core Health Score 0–100 (2–3 year resilience) |\n| probabilityDefault | 1-year PD in percent |\n| termPd.year2…year10 | Cumulative PD in percent |\n| delta / simulatedFhrDelta | Change vs previous (null for oldest) |\n| leverage / liquidity / earningsPerformance | Strong / Average / Weak |"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"count\": 26,\n  \"previous\": null,\n  \"next\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/XAZPzdJ/ratings/?page=2\",\n  \"results\": [\n    {\n      \"id\": \"2020Q2\",\n      \"href\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/XAZPzdJ/ratings/2020Q2/\",\n      \"eqyYear\": 2020,\n      \"period\": \"Q2\",\n      \"financialDate\": \"2020-03-28\",\n      \"reportingPeriod\": \"2020-05-15\",\n      \"fhr\": 49,\n      \"chs\": 48,\n      \"probabilityDefault\": 0.3343,\n      \"termPd\": {\n        \"year2\": 3.83,\n        \"year3\": 6.52,\n        \"year4\": 9.35,\n        \"year5\": 12.29,\n        \"year6\": 15.39,\n        \"year7\": 18.73,\n        \"year8\": 22.42,\n        \"year9\": 26.54,\n        \"year10\": 31.12\n      },\n      \"delta\": 0,\n      \"simulatedFhr\": 49,\n      \"simulatedFhrDelta\": -1,\n      \"operatingProfitability\": 30,\n      \"netProfitability\": 66,\n      \"capitalStructureEfficiency\": 12,\n      \"costStructureEfficiency\": 63,\n      \"leverage\": \"Average\",\n      \"liquidity\": \"Average\",\n      \"earningsPerformance\": \"Average\"\n    }\n  ]\n}"
+            },
+            {
+              "name": "500 Page past the end",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{data_api_url}}/companies/{{rrid}}/ratings/?",
+                  "host": [
+                    "{{data_api_url}}"
+                  ],
+                  "path": [
+                    "companies",
+                    "{{rrid}}",
+                    "ratings",
+                    ""
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "description": "Page number; past the end returns 500",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "| Field | Description |\n|---|---|\n| fhr | Financial Health Rating 0–100 (12-month default risk; higher = healthier) |\n| chs | Core Health Score 0–100 (2–3 year resilience) |\n| probabilityDefault | 1-year PD in percent |\n| termPd.year2…year10 | Cumulative PD in percent |\n| delta / simulatedFhrDelta | Change vs previous (null for oldest) |\n| leverage / liquidity / earningsPerformance | Strong / Average / Weak |"
+              },
+              "status": "Internal Server Error",
+              "code": 500,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"Request\": {\n    \"message\": \"Internal Server Error.\",\n    \"info\": {}\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Rating",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{data_api_url}}/companies/{{rrid}}/ratings/{{period_id}}/",
+              "host": [
+                "{{data_api_url}}"
+              ],
+              "path": [
+                "companies",
+                "{{rrid}}",
+                "ratings",
+                "{{period_id}}",
+                ""
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{data_api_url}}/companies/{{rrid}}/ratings/{{period_id}}/",
+                  "host": [
+                    "{{data_api_url}}"
+                  ],
+                  "path": [
+                    "companies",
+                    "{{rrid}}",
+                    "ratings",
+                    "{{period_id}}",
+                    ""
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"id\": \"2019YE\",\n  \"href\": \"https://rridata.sandbox.rrilabs.co/v2.0/companies/XAZPzdJ/ratings/2020Q2/\",\n  \"eqyYear\": 2019,\n  \"period\": \"YE\",\n  \"financialDate\": \"2019-09-28\",\n  \"reportingPeriod\": \"2020-05-15\",\n  \"fhr\": 47,\n  \"chs\": 50,\n  \"probabilityDefault\": 0.4149,\n  \"termPd\": {\n    \"year2\": 3.83,\n    \"year3\": 6.52,\n    \"year4\": 9.35,\n    \"year5\": 12.29,\n    \"year6\": 15.39,\n    \"year7\": 18.73,\n    \"year8\": 22.42,\n    \"year9\": 26.54,\n    \"year10\": 31.12\n  },\n  \"delta\": -9,\n  \"simulatedFhr\": 47,\n  \"simulatedFhrDelta\": -9,\n  \"operatingProfitability\": 30,\n  \"netProfitability\": 66,\n  \"capitalStructureEfficiency\": 12,\n  \"costStructureEfficiency\": 63,\n  \"leverage\": \"Average\",\n  \"liquidity\": \"Weak\",\n  \"earningsPerformance\": \"Average\"\n}"
+            },
+            {
+              "name": "404 Unknown rating",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{data_api_url}}/companies/{{rrid}}/ratings/{{period_id}}/",
+                  "host": [
+                    "{{data_api_url}}"
+                  ],
+                  "path": [
+                    "companies",
+                    "{{rrid}}",
+                    "ratings",
+                    "{{period_id}}",
+                    ""
+                  ]
+                }
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"Not found\": {\n    \"message\": \"Not Found.\",\n    \"info\": {}\n  }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6. Outreach (read)",
+      "description": "Outreach API on `{{outreach_api_url}}` (different host, RFC 7807 errors, cursor paging). Same Bearer token. The sandbox account currently has 0 requests; examples with data are *from the OpenAPI spec* (`{{outreach_api_url}}/openapi.yaml`).",
+      "item": [
+        {
+          "name": "List Outreach Requests",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{outreach_api_url}}/outreach-requests?limit=20&sort=-id",
+              "host": [
+                "{{outreach_api_url}}"
+              ],
+              "path": [
+                "outreach-requests"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": "Results per page (default 20)"
+                },
+                {
+                  "key": "sort",
+                  "value": "-id",
+                  "description": "id | counterparty_company_name | reference_id | created_date; prefix - for desc"
+                },
+                {
+                  "key": "cursor",
+                  "value": "",
+                  "description": "Value of cursors.next_cursor from the previous page",
+                  "disabled": true
+                },
+                {
+                  "key": "q",
+                  "value": "is_rated%3Dtrue",
+                  "description": "URL-encoded filters: counterparty_company_name=…, reference_id=…, is_rated=true|false (AND)",
+                  "disabled": true
+                },
+                {
+                  "key": "embed",
+                  "value": "(surveys(results(href)))",
+                  "description": "Embedded resources",
+                  "disabled": true
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Cursor envelope\", () => { const b = pm.response.json(); pm.expect(b.cursors).to.have.property(\"total\"); pm.expect(b.items).to.be.an(\"array\"); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK (sandbox, empty)",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{outreach_api_url}}/outreach-requests?limit=20&sort=-id",
+                  "host": [
+                    "{{outreach_api_url}}"
+                  ],
+                  "path": [
+                    "outreach-requests"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "description": "Results per page (default 20)"
+                    },
+                    {
+                      "key": "sort",
+                      "value": "-id",
+                      "description": "id | counterparty_company_name | reference_id | created_date; prefix - for desc"
+                    },
+                    {
+                      "key": "cursor",
+                      "value": "",
+                      "description": "Value of cursors.next_cursor from the previous page",
+                      "disabled": true
+                    },
+                    {
+                      "key": "q",
+                      "value": "is_rated%3Dtrue",
+                      "description": "URL-encoded filters: counterparty_company_name=…, reference_id=…, is_rated=true|false (AND)",
+                      "disabled": true
+                    },
+                    {
+                      "key": "embed",
+                      "value": "(surveys(results(href)))",
+                      "description": "Embedded resources",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"cursors\": {\n    \"query\": {\n      \"limit\": 20,\n      \"sort\": \"-id\"\n    },\n    \"total\": 0\n  },\n  \"items\": []\n}"
+            },
+            {
+              "name": "200 OK (from OpenAPI spec)",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{outreach_api_url}}/outreach-requests?limit=20&sort=-id",
+                  "host": [
+                    "{{outreach_api_url}}"
+                  ],
+                  "path": [
+                    "outreach-requests"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "description": "Results per page (default 20)"
+                    },
+                    {
+                      "key": "sort",
+                      "value": "-id",
+                      "description": "id | counterparty_company_name | reference_id | created_date; prefix - for desc"
+                    },
+                    {
+                      "key": "cursor",
+                      "value": "",
+                      "description": "Value of cursors.next_cursor from the previous page",
+                      "disabled": true
+                    },
+                    {
+                      "key": "q",
+                      "value": "is_rated%3Dtrue",
+                      "description": "URL-encoded filters: counterparty_company_name=…, reference_id=…, is_rated=true|false (AND)",
+                      "disabled": true
+                    },
+                    {
+                      "key": "embed",
+                      "value": "(surveys(results(href)))",
+                      "description": "Embedded resources",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"cursors\": {\n    \"first_cursor\": \"22FERSFFGE2324\",\n    \"last_cursor\": \"WEFAGEWH35236EWGDS\",\n    \"next_cursor\": \"WWDASFAGE325623ETTYWE\",\n    \"prev_cursor\": \"112425WFASBDEW\",\n    \"query\": {\n      \"limit\": 10\n    },\n    \"total\": 23115\n  },\n  \"items\": [\n    {\n      \"counterparty\": {\n        \"company_name\": \"Bob's Burgers\",\n        \"contact\": {\n          \"country\": \"USA\",\n          \"email\": \"joe.bloggs@example.com\",\n          \"first_name\": \"Joe\",\n          \"last_name\": \"Bloggs\",\n          \"tel\": \"353851234567\"\n        },\n        \"reference_id\": \"your-ref-1234\"\n      },\n      \"created_at\": \"2018-12-10T13:45:00Z\",\n      \"financial_submissions\": [\n        {\n          \"created_at\": \"2019-08-24T14:15:22Z\"\n        }\n      ],\n      \"is_rated\": true,\n      \"modified_at\": \"2018-12-10T13:45:00Z\",\n      \"outreach_request_id\": \"1234\",\n      \"relationship_manager\": {\n        \"email\": \"joe.bloggs@example.com\",\n        \"name\": \"Joe Bloggs\"\n      },\n      \"rrid\": \"Axtr4P\"\n    }\n  ]\n}"
+            },
+            {
+              "name": "400 Invalid sort",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{outreach_api_url}}/outreach-requests?limit=20&sort=-id",
+                  "host": [
+                    "{{outreach_api_url}}"
+                  ],
+                  "path": [
+                    "outreach-requests"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "description": "Results per page (default 20)"
+                    },
+                    {
+                      "key": "sort",
+                      "value": "-id",
+                      "description": "id | counterparty_company_name | reference_id | created_date; prefix - for desc"
+                    },
+                    {
+                      "key": "cursor",
+                      "value": "",
+                      "description": "Value of cursors.next_cursor from the previous page",
+                      "disabled": true
+                    },
+                    {
+                      "key": "q",
+                      "value": "is_rated%3Dtrue",
+                      "description": "URL-encoded filters: counterparty_company_name=…, reference_id=…, is_rated=true|false (AND)",
+                      "disabled": true
+                    },
+                    {
+                      "key": "embed",
+                      "value": "(surveys(results(href)))",
+                      "description": "Embedded resources",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/problem+json"
+                }
+              ],
+              "body": "{\n  \"detail\": \"Not a valid sort\",\n  \"status\": 400,\n  \"title\": \"Bad Request\",\n  \"type\": \"about:blank\"\n}"
+            },
+            {
+              "name": "400 Invalid cursor",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{outreach_api_url}}/outreach-requests?limit=20&sort=-id",
+                  "host": [
+                    "{{outreach_api_url}}"
+                  ],
+                  "path": [
+                    "outreach-requests"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "description": "Results per page (default 20)"
+                    },
+                    {
+                      "key": "sort",
+                      "value": "-id",
+                      "description": "id | counterparty_company_name | reference_id | created_date; prefix - for desc"
+                    },
+                    {
+                      "key": "cursor",
+                      "value": "",
+                      "description": "Value of cursors.next_cursor from the previous page",
+                      "disabled": true
+                    },
+                    {
+                      "key": "q",
+                      "value": "is_rated%3Dtrue",
+                      "description": "URL-encoded filters: counterparty_company_name=…, reference_id=…, is_rated=true|false (AND)",
+                      "disabled": true
+                    },
+                    {
+                      "key": "embed",
+                      "value": "(surveys(results(href)))",
+                      "description": "Embedded resources",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/problem+json"
+                }
+              ],
+              "body": "{\n  \"detail\": \"Invalid Cursor\",\n  \"status\": 400,\n  \"title\": \"Bad Request\",\n  \"type\": \"about:blank\"\n}"
+            },
+            {
+              "name": "400 Unknown parameter",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{outreach_api_url}}/outreach-requests?limit=20&sort=-id",
+                  "host": [
+                    "{{outreach_api_url}}"
+                  ],
+                  "path": [
+                    "outreach-requests"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "description": "Results per page (default 20)"
+                    },
+                    {
+                      "key": "sort",
+                      "value": "-id",
+                      "description": "id | counterparty_company_name | reference_id | created_date; prefix - for desc"
+                    },
+                    {
+                      "key": "cursor",
+                      "value": "",
+                      "description": "Value of cursors.next_cursor from the previous page",
+                      "disabled": true
+                    },
+                    {
+                      "key": "q",
+                      "value": "is_rated%3Dtrue",
+                      "description": "URL-encoded filters: counterparty_company_name=…, reference_id=…, is_rated=true|false (AND)",
+                      "disabled": true
+                    },
+                    {
+                      "key": "embed",
+                      "value": "(surveys(results(href)))",
+                      "description": "Embedded resources",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/problem+json"
+                }
+              ],
+              "body": "{\n  \"detail\": \"Extra query parameter(s) foo not in spec\",\n  \"status\": 400,\n  \"title\": null,\n  \"type\": \"about:blank\"\n}"
+            },
+            {
+              "name": "401 Invalid / expired token",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{outreach_api_url}}/outreach-requests?limit=20&sort=-id",
+                  "host": [
+                    "{{outreach_api_url}}"
+                  ],
+                  "path": [
+                    "outreach-requests"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "description": "Results per page (default 20)"
+                    },
+                    {
+                      "key": "sort",
+                      "value": "-id",
+                      "description": "id | counterparty_company_name | reference_id | created_date; prefix - for desc"
+                    },
+                    {
+                      "key": "cursor",
+                      "value": "",
+                      "description": "Value of cursors.next_cursor from the previous page",
+                      "disabled": true
+                    },
+                    {
+                      "key": "q",
+                      "value": "is_rated%3Dtrue",
+                      "description": "URL-encoded filters: counterparty_company_name=…, reference_id=…, is_rated=true|false (AND)",
+                      "disabled": true
+                    },
+                    {
+                      "key": "embed",
+                      "value": "(surveys(results(href)))",
+                      "description": "Embedded resources",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "status": "Unauthorized",
+              "code": 401,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/problem+json"
+                }
+              ],
+              "body": "{\n  \"detail\": \"The server could not verify that you are authorized to access the URL requested. You either supplied the wrong credentials (e.g. a bad password), or your browser doesn't understand how to supply the credentials required.\",\n  \"status\": 401,\n  \"title\": \"Unauthorized\",\n  \"type\": \"about:blank\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Outreach Request",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{outreach_api_url}}/outreach-requests/{{outreach_request_id}}",
+              "host": [
+                "{{outreach_api_url}}"
+              ],
+              "path": [
+                "outreach-requests",
+                "{{outreach_request_id}}"
+              ]
+            },
+            "description": "Single outreach request. An unknown ID (or one not belonging to your org) returns 403."
+          },
+          "response": [
+            {
+              "name": "200 OK (from OpenAPI spec)",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{outreach_api_url}}/outreach-requests/{{outreach_request_id}}",
+                  "host": [
+                    "{{outreach_api_url}}"
+                  ],
+                  "path": [
+                    "outreach-requests",
+                    "{{outreach_request_id}}"
+                  ]
+                },
+                "description": "Single outreach request. An unknown ID (or one not belonging to your org) returns 403."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"counterparty\": {\n    \"company_name\": \"Bob's Burgers\",\n    \"contact\": {\n      \"country\": \"USA\",\n      \"email\": \"joe.bloggs@example.com\",\n      \"first_name\": \"Joe\",\n      \"last_name\": \"Bloggs\",\n      \"tel\": \"353851234567\"\n    },\n    \"reference_id\": \"your-ref-1234\"\n  },\n  \"created_at\": \"2018-12-10T13:45:00Z\",\n  \"financial_submissions\": [\n    {\n      \"created_at\": \"2019-08-24T14:15:22Z\"\n    }\n  ],\n  \"is_rated\": true,\n  \"modified_at\": \"2018-12-10T13:45:00Z\",\n  \"outreach_request_id\": \"1234\",\n  \"relationship_manager\": {\n    \"email\": \"joe.bloggs@example.com\",\n    \"name\": \"Joe Bloggs\"\n  },\n  \"rrid\": \"Axtr4P\"\n}"
+            },
+            {
+              "name": "403 Unknown / not yours",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{outreach_api_url}}/outreach-requests/{{outreach_request_id}}",
+                  "host": [
+                    "{{outreach_api_url}}"
+                  ],
+                  "path": [
+                    "outreach-requests",
+                    "{{outreach_request_id}}"
+                  ]
+                },
+                "description": "Single outreach request. An unknown ID (or one not belonging to your org) returns 403."
+              },
+              "status": "Forbidden",
+              "code": 403,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/problem+json"
+                }
+              ],
+              "body": "{\n  \"detail\": \"Sorry, you do not have permission to access this resource\",\n  \"status\": 403,\n  \"title\": \"Permission denied.\",\n  \"type\": \"about:blank\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Outreach Communications",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{outreach_api_url}}/outreach-requests/{{outreach_request_id}}/communications",
+              "host": [
+                "{{outreach_api_url}}"
+              ],
+              "path": [
+                "outreach-requests",
+                "{{outreach_request_id}}",
+                "communications"
+              ]
+            },
+            "description": "Communication attempts RapidRatings made for the request."
+          },
+          "response": [
+            {
+              "name": "200 OK (from OpenAPI spec)",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{outreach_api_url}}/outreach-requests/{{outreach_request_id}}/communications",
+                  "host": [
+                    "{{outreach_api_url}}"
+                  ],
+                  "path": [
+                    "outreach-requests",
+                    "{{outreach_request_id}}",
+                    "communications"
+                  ]
+                },
+                "description": "Communication attempts RapidRatings made for the request."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"communications\": {\n    \"introductions\": [\n      {\n        \"channel\": \"email\",\n        \"sent_at\": \"2019-08-24T14:15:22Z\"\n      },\n      {\n        \"channel\": \"email\",\n        \"sent_at\": \"2019-09-24T14:15:22Z\"\n      }\n    ]\n  }\n}"
+            },
+            {
+              "name": "404 Unknown ID",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{outreach_api_url}}/outreach-requests/{{outreach_request_id}}/communications",
+                  "host": [
+                    "{{outreach_api_url}}"
+                  ],
+                  "path": [
+                    "outreach-requests",
+                    "{{outreach_request_id}}",
+                    "communications"
+                  ]
+                },
+                "description": "Communication attempts RapidRatings made for the request."
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/problem+json"
+                }
+              ],
+              "body": "{\n  \"detail\": \"Solicitation matching query does not exist.\",\n  \"status\": 404,\n  \"title\": \"Not Found\",\n  \"type\": \"about:blank\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "7. Outreach (write) ⚠️ sends real emails",
+      "description": "**Creating an outreach request makes RapidRatings email the counterparty contact.** Only send real, approved requests. Never include this folder in automated runs.",
+      "item": [
+        {
+          "name": "Create Outreach Request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{outreach_api_url}}/outreach-requests",
+              "host": [
+                "{{outreach_api_url}}"
+              ],
+              "path": [
+                "outreach-requests"
+              ]
+            },
+            "description": "⚠️ **Sends real emails.**\n\n| Field | Required | Rules |\n|---|---|---|\n| counterparty.company_name | yes | 1–255 chars |\n| counterparty.contact.first_name / last_name | yes | 1–255 chars |\n| counterparty.contact.email | yes | email |\n| counterparty.contact.country | yes | ISO-3166 alpha-3 |\n| counterparty.contact.tel | no | |\n| counterparty.reference_id | no | your supplier ID |\n| counterparty.additional_contacts | no | max 1; 409 if org not on Intercom delivery |\n| relationship_manager.name / email | yes | 1–255 chars |\n\nReturns **201 Created** with the outreach request object.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"counterparty\": {\n    \"company_name\": \"Bob's Burgers\",\n    \"reference_id\": \"your-ref-1234\",\n    \"contact\": {\n      \"first_name\": \"Joe\",\n      \"last_name\": \"Bloggs\",\n      \"email\": \"joe.bloggs@example.com\",\n      \"country\": \"USA\",\n      \"tel\": \"353851234567\"\n    }\n  },\n  \"relationship_manager\": {\n    \"name\": \"Joe Bloggs\",\n    \"email\": \"joe.bloggs@example.com\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "201 Created (from OpenAPI spec)",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{outreach_api_url}}/outreach-requests",
+                  "host": [
+                    "{{outreach_api_url}}"
+                  ],
+                  "path": [
+                    "outreach-requests"
+                  ]
+                },
+                "description": "⚠️ **Sends real emails.**\n\n| Field | Required | Rules |\n|---|---|---|\n| counterparty.company_name | yes | 1–255 chars |\n| counterparty.contact.first_name / last_name | yes | 1–255 chars |\n| counterparty.contact.email | yes | email |\n| counterparty.contact.country | yes | ISO-3166 alpha-3 |\n| counterparty.contact.tel | no | |\n| counterparty.reference_id | no | your supplier ID |\n| counterparty.additional_contacts | no | max 1; 409 if org not on Intercom delivery |\n| relationship_manager.name / email | yes | 1–255 chars |\n\nReturns **201 Created** with the outreach request object.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"counterparty\": {\n    \"company_name\": \"Bob's Burgers\",\n    \"reference_id\": \"your-ref-1234\",\n    \"contact\": {\n      \"first_name\": \"Joe\",\n      \"last_name\": \"Bloggs\",\n      \"email\": \"joe.bloggs@example.com\",\n      \"country\": \"USA\",\n      \"tel\": \"353851234567\"\n    }\n  },\n  \"relationship_manager\": {\n    \"name\": \"Joe Bloggs\",\n    \"email\": \"joe.bloggs@example.com\"\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Created",
+              "code": 201,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"counterparty\": {\n    \"company_name\": \"Bob's Burgers\",\n    \"contact\": {\n      \"country\": \"USA\",\n      \"email\": \"joe.bloggs@example.com\",\n      \"first_name\": \"Joe\",\n      \"last_name\": \"Bloggs\",\n      \"tel\": \"353851234567\"\n    },\n    \"reference_id\": \"your-ref-1234\"\n  },\n  \"created_at\": \"2018-12-10T13:45:00Z\",\n  \"financial_submissions\": [],\n  \"is_rated\": false,\n  \"modified_at\": \"2018-12-10T13:45:00Z\",\n  \"outreach_request_id\": \"1234\",\n  \"relationship_manager\": {\n    \"email\": \"joe.bloggs@example.com\",\n    \"name\": \"Joe Bloggs\"\n  },\n  \"rrid\": null,\n  \"status\": \"Request Created\"\n}"
+            },
+            {
+              "name": "400 Missing required properties (real)",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{outreach_api_url}}/outreach-requests",
+                  "host": [
+                    "{{outreach_api_url}}"
+                  ],
+                  "path": [
+                    "outreach-requests"
+                  ]
+                },
+                "description": "⚠️ **Sends real emails.**\n\n| Field | Required | Rules |\n|---|---|---|\n| counterparty.company_name | yes | 1–255 chars |\n| counterparty.contact.first_name / last_name | yes | 1–255 chars |\n| counterparty.contact.email | yes | email |\n| counterparty.contact.country | yes | ISO-3166 alpha-3 |\n| counterparty.contact.tel | no | |\n| counterparty.reference_id | no | your supplier ID |\n| counterparty.additional_contacts | no | max 1; 409 if org not on Intercom delivery |\n| relationship_manager.name / email | yes | 1–255 chars |\n\nReturns **201 Created** with the outreach request object.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"counterparty\": {\n    \"company_name\": \"Bob's Burgers\",\n    \"reference_id\": \"your-ref-1234\",\n    \"contact\": {\n      \"first_name\": \"Joe\",\n      \"last_name\": \"Bloggs\",\n      \"email\": \"joe.bloggs@example.com\",\n      \"country\": \"USA\",\n      \"tel\": \"353851234567\"\n    }\n  },\n  \"relationship_manager\": {\n    \"name\": \"Joe Bloggs\",\n    \"email\": \"joe.bloggs@example.com\"\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/problem+json"
+                }
+              ],
+              "body": "{\n  \"detail\": \"Input errors\",\n  \"status\": 400,\n  \"title\": \"Bad Request\",\n  \"type\": \"about:blank\",\n  \"errors\": [\n    \"'counterparty' is a required property\",\n    \"'relationship_manager' is a required property\"\n  ]\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

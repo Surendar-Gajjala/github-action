@@ -1,0 +1,297 @@
+# Prompt: Employee Onboarding Workflow Automation
+
+Act as a Senior Full-Stack Engineer and build a complete Employee Onboarding Workflow Automation application using **Java 17+, Spring Boot, React.js, TypeScript, PostgreSQL, OpenAI API, Email integration, and GitHub API**.
+
+## 1. Business Requirement
+
+Build an application where an HR user submits employee details through a form. After submission, the system automatically initiates an onboarding workflow:
+
+1. Validate and save employee details.
+2. Use OpenAI to generate a personalized welcome email and onboarding checklist.
+3. Send the welcome email to the employee using an email service.
+4. Create a GitHub onboarding issue with employee details, required access, and onboarding tasks.
+5. Track the execution status of each workflow step.
+6. Display the workflow results and errors on the UI.
+
+The process must be automated after the HR user clicks **Submit Employee**. Do not require manual email composition or GitHub issue creation.
+
+## 2. Frontend — Single Page with Tabs
+
+Use React.js, TypeScript, Vite, Tailwind CSS, React Hook Form, Zod, and TanStack Query.
+
+Create one responsive page titled **Employee Onboarding Automation** with these tabs:
+
+### Tab 1: Employee Details
+Create a form with:
+- Employee ID (generated automatically)
+- First Name
+- Last Name
+- Work Email
+- Job Title
+- Department
+- Joining Date
+- Reporting Manager
+- GitHub Username
+- Required GitHub Repository
+- Role or Access Level
+
+Buttons:
+- Submit Employee
+- Reset Form
+
+Validate required fields, email format, joining date, and GitHub details before submission.
+
+### Tab 2: Workflow Status
+Display a step-by-step workflow tracker:
+
+- Employee details validated
+- Employee record saved
+- AI email generated
+- Welcome email sent
+- GitHub onboarding issue created
+- Workflow completed
+
+Show Pending, In Progress, Success, and Failed states, with timestamps and useful error messages.
+
+### Tab 3: Email Preview
+Display the AI-generated email with:
+- Recipient
+- Subject
+- Email body
+- Onboarding checklist
+
+Allow an authorized HR user to review and edit the email before sending if the workflow is configured for approval. Support automatic sending when approval is disabled.
+
+### Tab 4: GitHub Onboarding
+Display:
+- GitHub repository
+- Issue title
+- Issue description
+- Onboarding checklist
+- Issue number
+- GitHub issue URL
+- Creation status
+
+Provide a link to open the created GitHub issue.
+
+### Tab 5: Employee History
+Display a searchable, paginated employee table with:
+- Employee ID
+- Employee Name
+- Email
+- Department
+- Joining Date
+- Workflow Status
+- Email Status
+- GitHub Issue Status
+- Created Date
+
+Allow users to open an employee's onboarding details and retry eligible failed steps.
+
+Keep all tabs inside the same page. Do not create separate pages for these sections.
+
+## 3. Backend — Spring Boot
+
+Use a layered architecture:
+
+- Controller
+- Service
+- Repository
+- DTO
+- Entity
+- Mapper
+- Integration Client
+- Exception Handler
+- Workflow Orchestrator
+
+Create these REST APIs:
+
+- POST `/api/employees` — validate and create an employee onboarding request.
+- GET `/api/employees` — retrieve employees with pagination and search.
+- GET `/api/employees/{id}` — retrieve employee details.
+- POST `/api/employees/{id}/workflow/retry` — retry failed workflow steps safely.
+- GET `/api/employees/{id}/workflow` — retrieve workflow status and execution history.
+- GET `/api/employees/{id}/email-preview` — retrieve the generated email.
+- POST `/api/employees/{id}/email/approve` — approve and send an email when approval is enabled.
+- GET `/api/health` — application health check.
+
+Use Spring Web, Spring Data JPA, Bean Validation, Spring Boot Actuator, and PostgreSQL. Use Flyway for database migrations.
+
+## 4. OpenAI Integration
+
+Create an `OpenAIClient` and `EmailContentService`.
+
+After employee details are saved, call the OpenAI API from the backend to generate:
+- A professional welcome email
+- A suitable email subject
+- A personalized onboarding checklist
+- GitHub onboarding issue title and description
+
+Provide structured output using a defined DTO or JSON schema. Validate the generated output before using it.
+
+Use a configurable system prompt that ensures professional, relevant, concise content.
+
+Never send API keys or sensitive employee data unnecessarily. Treat AI-generated output as untrusted content and validate it before execution.
+
+If OpenAI is unavailable, record the failure and use a configurable fallback email template where appropriate.
+
+## 5. Email Integration
+
+Create an `EmailService` interface and an implementation using Spring Boot JavaMailSender with SMTP.
+
+Responsibilities:
+- Send the welcome email to the employee.
+- Support HTML and plain-text email.
+- Record the recipient, subject, send status, and timestamp.
+- Handle SMTP failures.
+- Prevent accidental duplicate emails during retries.
+
+Use environment variables for SMTP host, port, username, password, and sender address.
+
+Never log passwords, API keys, or full sensitive email content.
+
+## 6. GitHub Integration
+
+Create a `GitHubService` using the GitHub REST API.
+
+After the email workflow step succeeds, or according to the configured workflow policy:
+- Create an onboarding issue in the configured repository.
+- Add the employee's name, role, department, joining date, and onboarding checklist.
+- Add task checkboxes for repository access, development environment setup, team introductions, and documentation review.
+- Save the issue number and HTML URL.
+- Record API errors and support safe retries.
+
+Use a GitHub fine-grained personal access token stored in backend environment variables. Grant only the required repository permissions, such as Issues read/write.
+
+Do not automatically grant repository access or change permissions merely by creating an issue. Actual access provisioning must be implemented separately with explicit authorization and audit logging.
+
+## 7. Workflow Orchestration
+
+Create an `EmployeeOnboardingWorkflowService`.
+
+Implement this flow:
+
+HR submits employee details
+→ Validate request
+→ Save employee and workflow record
+→ Generate email and onboarding content using OpenAI
+→ Send welcome email
+→ Create GitHub onboarding issue
+→ Persist results and statuses
+→ Display the final result in React.
+
+Use a durable workflow state model and separate transactions for workflow steps.
+
+Do not keep a database transaction open while making external API calls.
+
+Track each step independently. A failure in one step must not erase the employee record or successful results from previous steps.
+
+Use idempotency keys, unique constraints, and retry-safe operations to prevent duplicate employee records, emails, and GitHub issues. Use an outbox or durable job-processing mechanism if asynchronous execution is required.
+
+Return the workflow ID immediately if processing asynchronously, then let the frontend poll the workflow status or use server-sent events.
+
+## 8. Database Design
+
+Create these tables:
+
+**employees**
+- id
+- employee_number
+- first_name
+- last_name
+- email
+- job_title
+- department
+- joining_date
+- reporting_manager
+- github_username
+- github_repository
+- access_level
+- created_at
+- updated_at
+
+**onboarding_workflows**
+- id
+- employee_id
+- overall_status
+- current_step
+- started_at
+- completed_at
+- last_error
+
+**workflow_steps**
+- id
+- workflow_id
+- step_name
+- status
+- attempts
+- started_at
+- completed_at
+- error_message
+- external_reference
+
+**onboarding_artifacts**
+- id
+- workflow_id
+- artifact_type
+- subject
+- content
+- external_url
+- external_id
+- status
+- created_at
+
+Add appropriate foreign keys, indexes, unique constraints, and audit fields. Protect employee information with proper authorization and access controls.
+
+## 9. Security and Configuration
+
+Use Spring Security and role-based authorization for HR users and administrators.
+
+Configure these environment variables:
+
+- `OPENAI_API_KEY`
+- `OPENAI_MODEL`
+- `MAIL_HOST`
+- `MAIL_PORT`
+- `MAIL_USERNAME`
+- `MAIL_PASSWORD`
+- `MAIL_FROM`
+- `GITHUB_TOKEN`
+- `GITHUB_DEFAULT_OWNER`
+- `GITHUB_DEFAULT_REPOSITORY`
+- `DATABASE_URL`
+- `DATABASE_USERNAME`
+- `DATABASE_PASSWORD`
+
+Include an `.env.example` containing placeholders only. Never commit actual credentials to GitHub or expose them in React environment variables.
+
+Add input validation, safe error handling, API timeouts, logging with correlation IDs, and audit trails.
+
+## 10. Deliverables
+
+Generate a complete, runnable project with:
+
+- Spring Boot backend source code
+- React TypeScript frontend
+- PostgreSQL schema and Flyway migrations
+- OpenAI integration
+- Email integration
+- GitHub issue integration
+- Single-page tabbed dashboard
+- Docker Compose for local development
+- Backend and frontend configuration examples
+- Unit and integration tests
+- API documentation using OpenAPI/Swagger
+- README with setup instructions and sample API requests
+
+Include realistic sample employee data and mock integration modes for development and testing. Never send real emails or create real GitHub issues in mock mode.
+
+## 11. Implementation Instructions
+
+First inspect the existing repository and reuse its current architecture where possible. Then implement the application incrementally, creating real working code rather than pseudocode.
+
+Build the backend entities, APIs, workflow orchestration, and integration clients first. Then implement the React tabbed interface and connect it to the backend APIs.
+
+Verify compilation, database migrations, form validation, workflow status updates, failure handling, and retry behavior.
+
+The final result must allow an HR user to submit employee details once and automatically generate the email, send it, create a GitHub onboarding issue, and monitor the entire workflow from one page with tabs.

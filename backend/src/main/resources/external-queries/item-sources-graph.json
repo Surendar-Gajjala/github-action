@@ -1,0 +1,25 @@
+{
+  "traversal": {
+    "from": { "alias": "root", "type": "item" },
+    "to": { "alias": "leaf", "type": "part" },
+    "relationshipTypes": ["item_sources"],
+    "direction": "DESCENDANTS",
+    "anchorProperty": "id",
+    "anchorValues": [],
+    "maxDepth": 1
+  },
+  "select": {
+    "part": [
+      "part_number",
+      "manufacturer",
+      "description",
+      "z2_properties_comparison",
+      "country_of_origin",
+      "sourcing_type",
+      "supply_chain_risk",
+      "lifecycle.status"
+    ]
+  },
+  "returnAliases": ["leaf"],
+  "includeIntermediates": false
+}

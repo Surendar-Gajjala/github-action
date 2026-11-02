@@ -1,0 +1,71 @@
+server:
+  port: 8085
+  error:
+    include-message: always
+
+spring:
+  application:
+    name: scm-workflow
+  datasource:
+    url: jdbc:h2:mem:scmdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      # Schema is generated from the JPA model on every start (in-memory DB).
+      ddl-auto: create-drop
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: false
+        jdbc.time_zone: UTC
+  h2:
+    console:
+      # Overridden to true only in the "local" profile.
+      enabled: false
+      path: /h2-console
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    default-property-inclusion: non_null
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+scm:
+  seed:
+    enabled: true
+  workflow:
+    # dev     -> DevWorkflowAdapter: in-process BPMN-subset interpreter for local development/tests. NOT Camunda.
+    # camunda -> CamundaWorkflowAdapter: real Camunda 8 engine (e.g. Camunda 8 Run on localhost).
+    engine: ${SCM_WORKFLOW_ENGINE:dev}
+    dev:
+      retry-backoff-ms: 1000
+    camunda:
+      grpc-address: ${CAMUNDA_GRPC_ADDRESS:http://localhost:26500}
+      rest-address: ${CAMUNDA_REST_ADDRESS:http://localhost:8080}
+      # Leave empty for Camunda 8 Run's unprotected API; set for basic-auth protected clusters.
+      username: ${CAMUNDA_USERNAME:}
+      password: ${CAMUNDA_PASSWORD:}
+      service-job-timeout: PT5M
+      user-task-job-timeout: P30D
+      retry-backoff: PT5S
+
+logging:
+  level:
+    com.gsr.scm: INFO
+
+---
+spring:
+  config:
+    activate:
+      on-profile: local
+  h2:
+    console:
+      enabled: true
+      settings:
+        web-allow-others: false

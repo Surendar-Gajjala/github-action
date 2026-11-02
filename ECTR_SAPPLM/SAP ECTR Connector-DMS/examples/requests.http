@@ -1,0 +1,63 @@
+### Sample requests (VS Code "REST Client" or IntelliJ HTTP client). Mock SAP backend on port 8080.
+@base = http://localhost:8080
+
+### Health (includes "sap" component)
+GET {{base}}/actuator/health
+
+### Create document metadata (internal numbering)
+POST {{base}}/api/v1/documents
+Content-Type: application/json
+X-Correlation-Id: cad-job-4711
+Idempotency-Key: cad-job-4711
+
+{
+  "documentType": "DRW",
+  "documentPart": "000",
+  "documentVersion": "00",
+  "description": "Brake caliper drawing",
+  "descriptions": [ { "languageIso": "DE", "description": "Bremssattel Zeichnung" } ],
+  "objectLinks":  [ { "objectType": "MARA", "objectKey": "MAT-4711" } ]
+}
+
+### Same Idempotency-Key again -> 200, "replayed": true, no second document
+POST {{base}}/api/v1/documents
+Content-Type: application/json
+Idempotency-Key: cad-job-4711
+
+{ "documentType": "DRW", "description": "Brake caliper drawing" }
+
+### Validation error -> 400 with errors[]
+POST {{base}}/api/v1/documents
+Content-Type: application/json
+
+{ "documentType": "drawing", "description": "" }
+
+### SAP business error (unknown type in mock) -> 422 with sapMessages[]
+POST {{base}}/api/v1/documents
+Content-Type: application/json
+
+{ "documentType": "ZZZ", "description": "Unknown type" }
+
+### Read metadata (use the number returned above)
+GET {{base}}/api/v1/documents/DRW/10000001/000/00
+
+### Upload a PDF original
+POST {{base}}/api/v1/documents/DRW/10000001/000/00/originals
+Content-Type: multipart/form-data; boundary=BOUNDARY
+
+--BOUNDARY
+Content-Disposition: form-data; name="file"; filename="caliper.pdf"
+Content-Type: application/pdf
+
+%PDF-1.7
+%%EOF
+--BOUNDARY--
+
+### List originals
+GET {{base}}/api/v1/documents/DRW/10000001/000/00/originals
+
+### Download an original (use fileId from the upload response)
+GET {{base}}/api/v1/documents/DRW/10000001/000/00/originals/REPLACE-WITH-FILE-ID
+
+### Transaction status (use transactionId from a create response)
+GET {{base}}/api/v1/transactions/REPLACE-WITH-TRANSACTION-ID

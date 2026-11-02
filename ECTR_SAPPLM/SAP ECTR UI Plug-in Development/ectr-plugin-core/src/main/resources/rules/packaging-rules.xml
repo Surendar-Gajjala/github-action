@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Assembly packaging rules, applied when an assembly is dropped onto a packaging folder.
+
+  VERIFIED: this is OUR OWN file format (read by PackagingRulesLoader). It is not an SAP ECTR file.
+
+  The engine runs rules by phase: GROUP, then ENRICH, then SPLIT. The order in this file
+  only matters for rules in the same phase. Anything no rule places ends up in package UNASSIGNED.
+
+  Available rules:
+    group-by-material-group        GROUP   one package per MATERIAL_GROUP ("MG-<group>")
+    include-drawings               ENRICH  drawings join the package of the object they document
+    max-components-per-package     SPLIT   split packages larger than max="N"
+
+  Override without rebuilding: set "packagingRulesFile" in configuration PID
+  com.example.ectr.plugin.rules.
+-->
+<packaging-rules>
+  <rule id="group-by-material-group"/>
+  <rule id="include-drawings"/>
+  <rule id="max-components-per-package" max="3"/>
+</packaging-rules>

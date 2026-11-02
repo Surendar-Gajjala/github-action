@@ -1,0 +1,157 @@
+RapidRatings Integration - Solution Overview Prompt: What It Is and What It Is For
+==================================================================================
+
+File explained: RapidRatings_Integration_Solution_Overview_Prompt.md (same folder)
+Written: 2026-10-30
+
+
+1. WHAT THIS FILE IS
+--------------------
+The file is a PROMPT, not a design document. It is a detailed set of instructions
+to give an AI assistant (or a solution architect) so that it writes ONE specific
+document: "RapidRatings Integration - Solution Overview" for the Z2 Enterprise
+Data Integrations program.
+
+It does not describe the solution itself. It describes what the solution document
+must contain, which source material it must use, how it must be structured, and
+which mistakes it must not make.
+
+
+2. THE GOAL
+-----------
+To produce a solution overview that a design-review board and the developers
+taking over the work can rely on. After reading the generated document, a
+reviewer should understand:
+
+  - how a Z2 customer enables RapidRatings for a tenant and enters credentials;
+  - how Z2 authenticates to RapidRatings (OAuth 2.0 Client Credentials,
+    server-side only, token cached and renewed before expiry);
+  - which RapidRatings APIs are called and in what order
+    (Portfolios -> Companies -> rrid -> Periods and Ratings);
+  - the complete source schemas of Company, Periods and Ratings;
+  - how every source property maps into the existing Z2 Company DataModel;
+  - how the data appears on the Company Details page and in Raw Properties;
+  - how schema synchronization and data synchronization (manual and scheduled)
+    work;
+  - security, validation and error handling;
+  - which decisions are made, and which questions remain open before production.
+
+The second, equally important goal is ACCURACY. Most of the prompt exists to stop
+the writer from inventing things: API parameters, token fields, pagination,
+platform configuration syntax or UI behaviour that nobody has confirmed.
+
+
+3. HOW THE PROMPT IS ORGANISED
+------------------------------
+Section  Content
+-------  ----------------------------------------------------------------------
+1        Role to adopt (Senior Solution / Data Integration Architect) and the
+         objective.
+2        Document details (title, program, status) and the customer lifecycle:
+         enable -> configure credentials -> validate -> retrieve -> map ->
+         display -> sync manually or on a schedule. Portfolio scoping is
+         optional, not mandatory.
+3        Authentication: token endpoint, Basic auth with Client ID/Secret,
+         Bearer token, ~30 min lifetime, renew 60 s early, retry once only on
+         a confirmed expiry, never expose secrets or tokens to the browser,
+         redact them from logs. Asks for a simple flow diagram.
+4        API inventory: Token, Companies, Portfolios, Periods, Ratings, plus
+         Outreach flagged as a separate host that is out of scope until
+         verified.
+5-7      The supplied raw property lists for Company, Periods and Ratings, and
+         for each one the mapping analysis the document must contain (full
+         mapping tables, snake_case target names, null handling, units).
+8        Target structure: a new RapidRatings NESTED group on the existing Z2
+         Company DataModel, holding the company profile, a Periods PROPS_ARRAY
+         and a Ratings PROPS_ARRAY.
+9        UI: what the Company Details page and Raw Properties should show, and
+         a warning that adding properties to the DataModel does not
+         automatically create a page layout.
+10       Schema synchronization, kept separate from data synchronization; no
+         invented schema endpoint; no automatic overwrite of approved models.
+11       Manual and scheduled sync sharing one pipeline, the 12-step sync
+         sequence, and the record identity keys:
+           Company = tenantId + provider + rrid
+           Period  = tenantId + provider + rrid + periodId
+           Rating  = tenantId + provider + rrid + periodId
+12       Security, validation and error-handling topics to cover.
+13       Key design decisions to summarise.
+14       Open-questions table that must close the document.
+15       The required 14 headings of the final document and the writing style.
+16       Mandatory accuracy rules (see section 4 below).
+
+
+4. THE ACCURACY RULES IN SHORT
+------------------------------
+  - Treat the supplied endpoints and property lists as source material, not as
+    proof of every runtime behaviour.
+  - Keep every source property name and type; never drop a property silently.
+    If something is not mapped, say why.
+  - A field seen only as null (e.g. industryClassificationCode, externalSourceId,
+    financialAssets, cashFromOperationsFromCashFlow) has an UNRESOLVED type.
+  - Never convert null to zero, rescale "millions", or convert currencies.
+  - Never merge latestRatings and the Ratings endpoint silently when they differ.
+  - Never join records by company name, array position or response order.
+  - Do not assume nested objects inside a PROPS_ARRAY are supported; flatten
+    termPd.year2 ... termPd.year10 if needed.
+  - Label every statement as one of: verified from samples, proposed design
+    decision, or needs confirmation.
+  - Keep it a solution overview, not a low-level implementation specification.
+
+
+5. HOW TO USE IT
+----------------
+  1. Give the whole prompt file to the AI assistant (or the architect).
+  2. Attach the supporting material it refers to: the sample API responses and
+     the existing Company DataModel (docs/A1company.json).
+  3. Check the result against the required 14 headings (prompt section 15) and
+     the accuracy rules (prompt section 16).
+  4. Review the open-questions table with the product owner and RapidRatings
+     before implementation starts.
+
+
+6. HOW IT RELATES TO THE OTHER DOCUMENTS IN THIS REPOSITORY
+-----------------------------------------------------------
+docs/Overview/RapidRatings_Integration_Solution_Overview.md is a solution overview
+of the same kind, but it was not written strictly from this prompt. The two differ
+in ways a reviewer should decide on:
+
+  Topic                  This prompt asks for              Existing overview proposes
+  ---------------------  --------------------------------  ---------------------------------
+  Where the data lives   Company -> RapidRatings (NESTED)  Company -> Financial (existing
+                         directly on Company               NESTED) -> RapidRatings
+  Periods and ratings    Two separate PROPS_ARRAYs:        One Periods PROPS_ARRAY, with
+                         Periods and Ratings               rating metrics inside each period
+  Company Details UI     Required section (9)              Not covered
+  Document headings      Fixed list of 14                  25 sections, different order
+
+Pick one target structure before implementation; the mapping tables depend on it.
+
+
+7. PARTS OF THE PROMPT THAT ARE NOW OUT OF DATE
+-----------------------------------------------
+The prompt was written before the sandbox APIs were tested. Several things it
+tells the writer to treat as "unknown, to be confirmed" have since been observed
+in the sandbox (2026-10-28, see docs/api/). A document generated from the prompt
+today may describe them as open when they are in fact known for the sandbox:
+
+  - Token response fields: access_token, expires_in (1800 = 30 min),
+    token_type "Bearer", scope. No refresh token is issued.
+  - Expired or invalid token: 403 on the data API, 401 on the Outreach API.
+  - Pagination: page + next URL; companies 20 per page, periods and ratings 10
+    per page, all fixed; newest first. Asking for a page past the end returns
+    404 (companies) or 500 (others), so only follow "next".
+  - Supported company filters: portfolio, name (3+ characters), ticker,
+    externalSourceId. Any unknown query parameter returns 400.
+  - No incremental "changed since" filter exists.
+  - Rating id equals the period id (e.g. 2019YE), one rating per period.
+  - probabilityDefault and termPd values are percentages; fhr and chs are 0-100;
+    leverage, liquidity and earningsPerformance were Strong / Average / Weak.
+  - The company DETAIL endpoint also returns reports[] and sectorAverages, which
+    the prompt's Company property list does not include.
+  - Outreach: separate host, has an OpenAPI spec, uses the same token, and
+    creating a request sends real emails to the counterparty.
+
+These are sandbox observations; production still has to be confirmed. If the
+prompt is reused, give the writer docs/api/ as well, and tell it to present these
+items as "verified in the sandbox" rather than as open questions.

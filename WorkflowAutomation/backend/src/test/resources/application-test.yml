@@ -1,0 +1,26 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:onboarding-test;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+  flyway:
+    locations: classpath:db/migration
+  h2:
+    console:
+      enabled: false
+
+app:
+  integrations:
+    openai: mock
+    email: mock
+    github: mock
+  workflow:
+    poll-interval-ms: 200
+  mock:
+    openai-fail: false
+    email-fail: false
+    github-fail: false
+
+logging:
+  level:
+    com.gsr.onboarding: WARN
